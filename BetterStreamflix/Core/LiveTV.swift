@@ -264,10 +264,25 @@ struct VavooLiveProvider: LiveTVProvider {
     static let es = VavooLiveProvider(id: "vavooEs", displayName: "Vavoo Live ES", language: "es", groupNames: ["Spain"])
     static let pl = VavooLiveProvider(id: "vavooPl", displayName: "Vavoo Live PL", language: "pl", groupNames: ["Poland"])
 
+    private static let vavooBase = URL(string: "https://vavoo.to")!
+    private static let browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+    private var apiRegion: String {
+        ["de": "DE", "en": "GB", "it": "IT", "fr": "FR", "es": "ES", "pl": "PL"][language] ?? language.uppercased()
+    }
+
     func channels() async throws -> [LiveChannel] {
+        let items: [CatalogItem]
+        do {
+            items = try await Self.catalog()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return try await mediaHubChannels()
+        }
         let wanted = Set(groupNames.map { $0.lowercased() })
         let id = id
-        return try await Self.catalog().compactMap { item in
+        return items.compactMap { item in
             guard wanted.contains(item.group.lowercased()) else { return nil }
             return LiveChannel(
                 id: "\(id):\(item.id)",
@@ -282,17 +297,168 @@ struct VavooLiveProvider: LiveTVProvider {
         }
     }
 
+    /// Resolve order from Android: geil.to mirror, unsigned MediaHub resolve,
+    /// signed MediaHubMX/MediaUrl passes (re-signing once on 401/403/451),
+    /// then geil.to again for non-geil URLs.
     func resolve(_ channel: LiveChannel) async throws -> PlaybackSource {
-        for site in Self.sites {
+        let target = channel.streamURL
+        let headers = Self.playHeaders(for: target)
+        func source(_ url: URL) -> PlaybackSource {
+            PlaybackSource(url: url, headers: headers, subtitles: [], preferredPeakBitRate: nil)
+        }
+        let isGeil = target.host?.lowercased().contains("geil.") == true
+        if isGeil, let url = await Self.geilResolve(target) { return source(url) }
+
+        let bases = Self.resolveBases(for: target)
+        for base in bases {
+            let body: [String: Any] = ["language": language, "region": apiRegion, "url": target.absoluteString]
+            if let result = try? await Self.post(base.appendingPathComponent("mediahubmx-resolve.json"), body: body, headers: Self.browserHeaders(base)),
+               let url = Self.parseResolved(result.data, status: result.status) {
+                return source(url)
+            }
+        }
+
+        try Task.checkCancellation()
+        if let signature = await VavooAddonSignature.shared.current() {
+            let first = await signedPass(target, bases: bases, signature: signature)
+            if let url = first.url { return source(url) }
+            if first.authFailure {
+                await VavooAddonSignature.shared.invalidate()
+                if let fresh = await VavooAddonSignature.shared.current(force: true),
+                   let url = await signedPass(target, bases: bases, signature: fresh).url {
+                    return source(url)
+                }
+            }
+        }
+
+        if !isGeil, let url = await Self.geilResolve(target) { return source(url) }
+        throw AppError.invalidResponse
+    }
+
+    private func signedPass(
+        _ target: URL,
+        bases: [URL],
+        signature: VavooAddonSignature.Signature
+    ) async -> (url: URL?, authFailure: Bool) {
+        var authFailure = false
+        let plans: [(VavooMediaEngine, String)] = [
+            (.mediaHubMX, "3.1.0"), (.mediaURL, "3.1.0"), (.mediaHubMX, "3.0.2"), (.mediaURL, "3.0.2")
+        ]
+        for base in bases {
+            for (engine, clientVersion) in plans {
+                let body: [String: Any] = [
+                    "language": language, "region": apiRegion,
+                    "url": target.absoluteString, "clientVersion": clientVersion
+                ]
+                let headers = ["User-Agent": engine.userAgent, "Accept": "application/json", engine.signatureHeader: signature.value]
+                guard let result = try? await Self.post(base.appendingPathComponent("\(engine.prefix)-resolve.json"), body: body, headers: headers) else { continue }
+                if let url = Self.parseResolved(result.data, status: result.status) { return (url, authFailure) }
+                if [401, 403, 451].contains(result.status) { authFailure = true }
+            }
+        }
+        return (nil, authFailure)
+    }
+
+    /// Android's fallback channel list: vavoo.to's MediaHub catalog per group.
+    /// Tried unsigned like Android, then with the addon signature.
+    private func mediaHubChannels() async throws -> [LiveChannel] {
+        let endpoint = Self.vavooBase.appendingPathComponent("mediahubmx-catalog.json")
+        let signature = await VavooAddonSignature.shared.current()
+        var channels: [LiveChannel] = []
+        var seen: Set<String> = []
+        for group in groupNames {
+            for signed in [false, true] where channels.isEmpty || signed == false {
+                if signed && signature == nil { continue }
+                var cursor: Int?
+                for _ in 0..<50 {
+                    try Task.checkCancellation()
+                    var body: [String: Any] = [
+                        "language": language, "region": apiRegion, "catalogId": "iptv", "id": "",
+                        "adult": false, "search": "", "sort": "name", "filter": ["group": group],
+                        "cursor": cursor.map { $0 as Any } ?? NSNull()
+                    ]
+                    var headers = Self.browserHeaders(Self.vavooBase)
+                    if signed, let signature {
+                        body["clientVersion"] = "3.1.0"
+                        headers = ["User-Agent": VavooMediaEngine.mediaHubMX.userAgent, "Accept": "application/json",
+                                   VavooMediaEngine.mediaHubMX.signatureHeader: signature.value]
+                    }
+                    guard let result = try? await Self.post(endpoint, body: body, headers: headers),
+                          (200..<300).contains(result.status),
+                          let page = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any],
+                          let rows = page["items"] as? [[String: Any]], !rows.isEmpty else { break }
+                    for row in rows {
+                        guard let raw = row["url"] as? String, let url = URL(string: raw),
+                              let name = row["name"] as? String, !name.isEmpty else { continue }
+                        let rowID = ((row["ids"] as? [String: Any])?["id"]).map { "\($0)" } ?? raw
+                        guard seen.insert(rowID).inserted else { continue }
+                        channels.append(LiveChannel(
+                            id: "\(id):\(rowID)",
+                            providerID: id,
+                            name: Self.fixName(name),
+                            logo: nil,
+                            group: Self.category(for: name),
+                            streamURL: url,
+                            headers: Self.playHeaders(for: url)
+                        ))
+                    }
+                    guard let next = page["nextCursor"] as? Int else { break }
+                    cursor = next
+                }
+            }
+        }
+        guard !channels.isEmpty else { throw AppError.invalidResponse }
+        return channels
+    }
+
+    private static func geilResolve(_ target: URL) async -> URL? {
+        for site in sites {
             var components = URLComponents(url: site.appendingPathComponent("live/resolve"), resolvingAgainstBaseURL: false)
-            components?.queryItems = [URLQueryItem(name: "url", value: channel.streamURL.absoluteString)]
+            components?.queryItems = [URLQueryItem(name: "url", value: target.absoluteString)]
             guard let url = components?.url,
-                  let object = try? await Self.json(url) as? [String: Any],
+                  let object = try? await json(url) as? [String: Any],
                   let raw = (object["url"] as? String) ?? (object["streamUrl"] as? String),
                   let stream = URL(string: raw) else { continue }
-            return PlaybackSource(url: stream, headers: Self.playHeaders(for: channel.streamURL), subtitles: [], preferredPeakBitRate: nil)
+            return stream
         }
-        throw AppError.invalidResponse
+        return nil
+    }
+
+    private static func resolveBases(for url: URL) -> [URL] {
+        var bases: [URL] = []
+        if let scheme = url.scheme, let host = url.host, let origin = URL(string: "\(scheme)://\(host)") { bases.append(origin) }
+        bases.append(vavooBase)
+        var seen: Set<String> = []
+        return bases.filter { seen.insert($0.absoluteString.lowercased()).inserted }
+    }
+
+    private static func browserHeaders(_ base: URL) -> [String: String] {
+        let origin = base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return ["User-Agent": browserUserAgent, "Origin": origin, "Referer": origin + "/"]
+    }
+
+    private static func post(_ url: URL, body: [String: Any], headers: [String: String]) async throws -> (data: Data, status: Int) {
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    private static func parseResolved(_ data: Data, status: Int) -> URL? {
+        guard (200..<300).contains(status), let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        let object: [String: Any]?
+        if let array = json as? [[String: Any]] {
+            object = array.first
+        } else if let top = json as? [String: Any] {
+            object = (top["data"] as? [String: Any]) ?? (top["result"] as? [String: Any]) ?? top
+        } else {
+            object = nil
+        }
+        guard let raw = object?["url"] as? String, !raw.isEmpty else { return nil }
+        return URL(string: raw)
     }
 
     private struct CatalogItem: Sendable {
