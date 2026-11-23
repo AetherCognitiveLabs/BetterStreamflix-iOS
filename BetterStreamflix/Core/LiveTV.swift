@@ -244,8 +244,176 @@ struct M3UPlaylistLiveProvider: LiveTVProvider {
     }
 }
 
+/// Vavoo live TV via the token-free geil.to catalog, ported from BetterStreamflix
+/// Android's VavooProvider primary path: the paged catalog is filtered to the
+/// language's country groups and each channel is resolved right before playback.
+struct VavooLiveProvider: LiveTVProvider {
+    let id: String
+    let displayName: String
+    let language: String
+    let groupNames: [String]
+
+    private static let sites = ["https://geil.to", "https://geil.app", "https://geil.win"].compactMap(URL.init(string:))
+    private static let apiUserAgent = "MediaHubMX/2"
+    private static let playUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+
+    static let de = VavooLiveProvider(id: "vavoo", displayName: "Vavoo Live DE", language: "de", groupNames: ["Germany"])
+    static let en = VavooLiveProvider(id: "vavooEn", displayName: "Vavoo Live UK", language: "en", groupNames: ["United Kingdom"])
+    static let it = VavooLiveProvider(id: "vavooIt", displayName: "Vavoo Live IT", language: "it", groupNames: ["Italy"])
+    static let fr = VavooLiveProvider(id: "vavooFr", displayName: "Vavoo Live FR", language: "fr", groupNames: ["France", "France Sport"])
+    static let es = VavooLiveProvider(id: "vavooEs", displayName: "Vavoo Live ES", language: "es", groupNames: ["Spain"])
+    static let pl = VavooLiveProvider(id: "vavooPl", displayName: "Vavoo Live PL", language: "pl", groupNames: ["Poland"])
+
+    func channels() async throws -> [LiveChannel] {
+        let wanted = Set(groupNames.map { $0.lowercased() })
+        let id = id
+        return try await Self.catalog().compactMap { item in
+            guard wanted.contains(item.group.lowercased()) else { return nil }
+            return LiveChannel(
+                id: "\(id):\(item.id)",
+                providerID: id,
+                name: item.name,
+                logo: item.logo,
+                group: Self.category(for: item.name),
+                streamURL: item.url,
+                headers: Self.playHeaders(for: item.url),
+                epgID: item.tvgID
+            )
+        }
+    }
+
+    func resolve(_ channel: LiveChannel) async throws -> PlaybackSource {
+        for site in Self.sites {
+            var components = URLComponents(url: site.appendingPathComponent("live/resolve"), resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "url", value: channel.streamURL.absoluteString)]
+            guard let url = components?.url,
+                  let object = try? await Self.json(url) as? [String: Any],
+                  let raw = (object["url"] as? String) ?? (object["streamUrl"] as? String),
+                  let stream = URL(string: raw) else { continue }
+            return PlaybackSource(url: stream, headers: Self.playHeaders(for: channel.streamURL), subtitles: [], preferredPeakBitRate: nil)
+        }
+        throw AppError.invalidResponse
+    }
+
+    private struct CatalogItem: Sendable {
+        let id: String, name: String, url: URL, logo: URL?, group: String, tvgID: String?
+    }
+
+    private static func playHeaders(for url: URL) -> [String: String] {
+        var headers = ["User-Agent": playUserAgent]
+        if let scheme = url.scheme, let host = url.host { headers["Referer"] = "\(scheme)://\(host)/" }
+        return headers
+    }
+
+    private static func json(_ url: URL) async throws -> Any {
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.setValue(apiUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { throw AppError.invalidResponse }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    private static let catalogCache = LiveCatalogCache<[CatalogItem]>()
+
+    private static func catalog() async throws -> [CatalogItem] {
+        try await catalogCache.value(maxAge: 30 * 60) {
+            for site in sites {
+                var items: [CatalogItem] = []
+                var cursor: String?
+                do {
+                    for _ in 0..<200 {
+                        try Task.checkCancellation()
+                        var components = URLComponents(url: site.appendingPathComponent("live/catalog/live/channels.json"), resolvingAgainstBaseURL: false)
+                        if let cursor { components?.queryItems = [URLQueryItem(name: "cursor", value: cursor)] }
+                        guard let url = components?.url,
+                              let page = try await json(url) as? [String: Any],
+                              let rows = page["items"] as? [[String: Any]], !rows.isEmpty else { break }
+                        for row in rows {
+                            guard let id = row["id"].map({ "\($0)" }), !id.isEmpty,
+                                  let raw = row["url"] as? String, let url = URL(string: raw) else { continue }
+                            let logo = ((row["images"] as? [String: Any])?["logo"] as? String).map(fixLogo)
+                            items.append(CatalogItem(
+                                id: id,
+                                name: fixName(row["name"] as? String ?? ""),
+                                url: url,
+                                logo: logo.flatMap(URL.init(string:)),
+                                group: (row["tags"] as? [String])?.first ?? "",
+                                tvgID: (row["ids"] as? [String: Any])?["tvg"] as? String
+                            ))
+                        }
+                        guard let next = page["nextCursor"] as? String, !next.isEmpty, next != "null" else { break }
+                        cursor = next
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    continue
+                }
+                if items.count >= 100 { return items }
+            }
+            throw AppError.invalidResponse
+        }
+    }
+
+    /// geil.to marks mirrors as "Name (1)"; Android maps them to Vavoo's ".b/.c/.s" suffixes.
+    private static func fixName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard let range = trimmed.range(of: #"\s*\((\d{1,2})\)$"#, options: .regularExpression) else { return name }
+        let number = trimmed[range].filter(\.isNumber)
+        let tag = ["1": "b", "6": "c", "7": "s"][String(number)] ?? String(number)
+        return trimmed[..<range.lowerBound].trimmingCharacters(in: .whitespaces) + " .\(tag)"
+    }
+
+    private static func fixLogo(_ raw: String) -> String {
+        if let range = raw.range(of: #"^https?://logo\.huhu\.to/logo\?c=(\d+)\.png$"#, options: .regularExpression) {
+            let number = raw[range].components(separatedBy: "c=").last?.replacingOccurrences(of: ".png", with: "") ?? ""
+            return "https://vavoo.to/live2/logo/\(number).png"
+        }
+        if raw.hasPrefix("/live2/logo/") { return "https://vavoo.to" + raw }
+        return raw
+    }
+
+    private static func category(for name: String) -> String {
+        let value = name.lowercased()
+        let words: [(String, [String])] = [
+            ("Sport", ["sport", "dazn", "eurosport", "sky sport", "bundesliga", "football", "calcio", "futbol", "tennis"]),
+            ("News", ["news", "nachrichten", "n-tv", "ntv", "welt", "tagesschau", "cnn", "bbc news", "rai news", "euronews"]),
+            ("Doku", ["doku", "discovery", "national geographic", "nat geo", "history", "planet", "animal"]),
+            ("Film", ["cinema", "kino", "film", "movie", "sky cinema", "action", "thriller"])
+        ]
+        return words.first { $0.1.contains(where: value.contains) }?.0 ?? "TV"
+    }
+}
+
+private actor LiveCatalogCache<Value: Sendable> {
+    private var cached: (fetchedAt: Date, value: Value)?
+    private var inFlight: Task<Value, Error>?
+
+    func value(maxAge: TimeInterval, load: @escaping @Sendable () async throws -> Value) async throws -> Value {
+        if let cached, Date().timeIntervalSince(cached.fetchedAt) < maxAge { return cached.value }
+        if let inFlight { return try await inFlight.value }
+        let task = Task { try await load() }
+        inFlight = task
+        defer { inFlight = nil }
+        do {
+            let value = try await task.value
+            cached = (Date(), value)
+            return value
+        } catch {
+            if let cached { return cached.value }
+            throw error
+        }
+    }
+}
+
 enum LiveTVProviders {
     static func all() -> [any LiveTVProvider] {
-        [M3UPlaylistLiveProvider.plutoTVDE, M3UPlaylistLiveProvider.plutoTVUS, M3UPlaylistLiveProvider.iptvOrg]
+        [
+            M3UPlaylistLiveProvider.plutoTVDE, M3UPlaylistLiveProvider.plutoTVUS,
+            VavooLiveProvider.de, VavooLiveProvider.en, VavooLiveProvider.it,
+            VavooLiveProvider.fr, VavooLiveProvider.es, VavooLiveProvider.pl,
+            M3UPlaylistLiveProvider.iptvOrg
+        ]
     }
 }
