@@ -1420,7 +1420,7 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
 struct KellerKinoPlaybackProvider: GermanPlaybackProvider {
     var id: String { "kellerkino" }
     var displayName: String { "KellerKino" }
-    var baseURL: URL { Self.base }
+    var baseURL: URL { ProviderDomainUpdater.baseURL(for: "kellerkino", default: Self.base) }
 
     private static let base = URL(string: "https://www.kellerkino.com/")!
     private static let serverMarkers = ["voe", "streamtape", "dood", "lulu", "vidara", "vinovo", "stream", "watch", "embed"]
@@ -1430,8 +1430,8 @@ struct KellerKinoPlaybackProvider: GermanPlaybackProvider {
         for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
             for path in ["", "suche/", "search/"] {
-                guard let searchURL = URL(string: "\(Self.base.absoluteString)\(path)?s=\(ProviderNetwork.encoded(query))"),
-                      let html = try? await CloudflareResolver.page(searchURL, referer: Self.base) else { continue }
+                guard let searchURL = URL(string: "\(baseURL.absoluteString)\(path)?s=\(ProviderNetwork.encoded(query))"),
+                      let html = try? await CloudflareResolver.page(searchURL, referer: baseURL) else { continue }
                 let candidates = Self.candidates(in: html)
                 guard !candidates.isEmpty else { continue }
                 guard let detail = GermanScrape.bestPage(from: candidates, context: context, preferSeason: nil) else { break }

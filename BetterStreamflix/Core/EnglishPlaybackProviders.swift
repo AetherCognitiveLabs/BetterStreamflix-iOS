@@ -990,7 +990,9 @@ enum MovyCipher {
 struct Shahid4uPlaybackProvider: ScrapedPlaybackProvider {
     var id: String { "shahid4u" }
     var displayName: String { "Shahid4u" }
-    var baseURL: URL { URL(string: "https://shahidd4u.day/")! }
+    var baseURL: URL {
+        ProviderDomainUpdater.baseURL(for: "shahid4u", default: URL(string: "https://shahidd4u.day/")!)
+    }
     var audioLanguage: String { "ar" }
 
     private static let realEmbed = #"https?://[^"'\s]*(embed|player|voe|dood|mixdrop|upstream|vidtube|uqload|filemoon|streamwish|ok\.ru|dailymotion|vidmoly|listeamed)[^"'\s]*"#

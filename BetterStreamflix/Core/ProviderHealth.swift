@@ -43,6 +43,10 @@ actor ProviderHealth {
         window.failures += 1
         if window.failures >= Self.failureThreshold {
             window.openUntil = now.addingTimeInterval(Self.openDuration)
+            // A provider that keeps failing may have moved to a new domain.
+            if ProviderDomainUpdater.defaults[providerID] != nil {
+                Task { await ProviderDomainUpdater.shared.update(providerID) }
+            }
         }
         windows[providerID] = window
     }
