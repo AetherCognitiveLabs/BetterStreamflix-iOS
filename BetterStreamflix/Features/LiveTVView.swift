@@ -108,10 +108,12 @@ struct LiveTVView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        var loadedChannels: [LiveChannel] = []
         do {
             let channels = try await ProviderHealth.shared.guarded(provider.id) { try await provider.channels() }
             guard !Task.isCancelled else { return }
             groups = LiveChannelGroup.grouping(channels)
+            loadedChannels = channels
             if channels.isEmpty {
                 errorMessage = await ProviderHealth.shared.isAvailable(provider.id)
                     ? "\(provider.displayName) has no channels right now."
@@ -124,6 +126,11 @@ struct LiveTVView: View {
             errorMessage = "Couldn't load \(provider.displayName).\n\(error.localizedDescription)"
         }
         await refreshOutage()
+        isLoading = false
+        guard !loadedChannels.isEmpty, LiveEPG.hasGuide(provider.id) else { return }
+        let annotated = await LiveEPG.shared.annotate(loadedChannels, providerID: provider.id)
+        guard !Task.isCancelled, provider.id == providerID, annotated != loadedChannels else { return }
+        groups = LiveChannelGroup.grouping(annotated)
     }
 
     private func refreshOutage() async {
@@ -153,7 +160,10 @@ private struct LiveChannelRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(channel.name).font(.body.weight(.medium)).lineLimit(1)
                 if let now = channel.programNow {
-                    Text(now).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text("Now: \(now)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let next = channel.programNext {
+                    Text("Next: \(next)").font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
