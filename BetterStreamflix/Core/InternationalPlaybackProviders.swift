@@ -774,6 +774,7 @@ enum InternationalPlaybackProviders {
             RidomoviesPlaybackProvider(),
             AnyMoviePlaybackProvider(),
             MkissaPlaybackProvider(),
+            LookMovie2PlaybackProvider(),
         ]
     }
 

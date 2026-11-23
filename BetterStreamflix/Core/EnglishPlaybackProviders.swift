@@ -493,3 +493,83 @@ enum MkissaCrypto {
         return Data(token).map { String(format: "%02x", $0) }.joined()
     }
 }
+
+// MARK: - LookMovie2
+
+/// Server-rendered catalog. Play pages embed `window['movie_storage']`
+/// (`id_movie`, `hash`, `expires`) that unlocks direct HLS per quality from
+/// `/api/v1/security/movie-access`. Series tokens live in client state only,
+/// so only movies are exposed.
+struct LookMovie2PlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "lookmovie2" }
+    var displayName: String { "LookMovie2" }
+    var baseURL: URL { URL(string: "https://www.lookmovie2.to/")! }
+    var supportsSeries: Bool { false }
+
+    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        guard context.request.media.kind == .movie else { return [] }
+        let headers = ["User-Agent": Self.userAgent]
+        for query in TitleMatch.queries(for: context) {
+            let search = try url("movies/search/", query: ["q": query, "page": "1"])
+            guard let page = try? await html(search, headers: headers) else { continue }
+            var seen = Set<String>()
+            let results: [ScrapedResult] = page.all { $0.tag == "a" && $0["href"].contains("/movies/view/") }.compactMap { anchor in
+                guard let link = try? url(anchor["href"]), seen.insert(link.absoluteString).inserted else { return nil }
+                let slug = link.lastPathComponent
+                let title = anchor.first { $0.tag == "img" }?["alt"] ?? anchor.text
+                let year = AnimeHTML.captures(#"-(\d{4})$"#, in: slug).first.flatMap { Int($0[1]) }
+                return ScrapedResult(title: title.trimmingCharacters(in: .whitespacesAndNewlines), year: year, kind: .movie, url: link)
+            }
+            guard let match = results.bestMatch(for: context) else { continue }
+            let playURL = URL(string: match.url.absoluteString.replacingOccurrences(of: "/movies/view/", with: "/movies/play/"))!
+            let access = try await streams(playURL: playURL, detail: match.url)
+            return access.streams.map { quality, stream in
+                HosterLink(
+                    name: "LookMovie \(quality)",
+                    url: stream,
+                    referer: match.url,
+                    isDirect: true,
+                    headers: ["User-Agent": Self.userAgent, "Referer": match.url.absoluteString],
+                    subtitles: access.subtitles
+                )
+            }
+        }
+        return []
+    }
+
+    private func streams(playURL: URL, detail: URL) async throws -> (streams: [(String, URL)], subtitles: [SubtitleSource]) {
+        let headers = ["User-Agent": Self.userAgent]
+        let page = try await text(playURL, referer: detail, headers: headers)
+        guard let storage = AnimeHTML.captures(#"window\['movie_storage'\]\s*=\s*\{([\s\S]*?)\};"#, in: page).first?[1],
+              let movieID = AnimeHTML.captures(#"id_movie:\s*(\d+)"#, in: storage).first?[1],
+              let hash = AnimeHTML.captures(#"hash:\s*"([^"]+)""#, in: storage).first?[1],
+              let expires = AnimeHTML.captures(#"expires:\s*(\d+)"#, in: storage).first?[1]
+        else { return ([], []) }
+        let api = try url("api/v1/security/movie-access", query: [
+            "id_movie": movieID, "hash": hash, "expires": expires, "step": "1",
+        ])
+        let root = try await jsonObject(api, referer: playURL, headers: headers)
+        guard root["success"] as? Bool == true else { return ([], []) }
+        let streams = (root["streams"] as? [String: Any] ?? [:])
+            .compactMap { quality, value -> (String, URL)? in
+                guard let raw = value as? String, let url = URL(string: raw) else { return nil }
+                return (quality, url)
+            }
+            .sorted { (Int($0.0.filter(\.isNumber)) ?? 0) > (Int($1.0.filter(\.isNumber)) ?? 0) }
+        let subtitles: [SubtitleSource] = (root["subtitles"] as? [[String: Any]] ?? []).compactMap { entry in
+            let raw = (entry["file"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (entry["src"] as? String ?? "")
+            guard !raw.isEmpty, let file = try? url(raw) else { return nil }
+            let label = (entry["language"] as? String) ?? (entry["label"] as? String) ?? "English"
+            return SubtitleSource(
+                providerID: id,
+                providerName: displayName,
+                label: label,
+                languageCode: AnimeStreamResolver.languageCode(label),
+                url: file
+            )
+        }
+        return (streams, subtitles)
+    }
+}
