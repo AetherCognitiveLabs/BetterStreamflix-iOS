@@ -486,7 +486,7 @@ struct FilmPalastPlaybackProvider: GermanPlaybackProvider {
                     ?? article.first { $0.tag == "a" && $0["href"].contains("/stream/") }
                 guard let link else { continue }
                 let title = link.text.isEmpty ? link["title"] : link.text
-                let year = GermanTitleMatching.year(in: article.text) ?? GermanTitleMatching.year(in: title)
+                let year = AnimeMatching.year(article.text) ?? GermanTitleMatching.year(in: title)
                 guard GermanTitleMatching.matches(title, titles: context.titles) else { continue }
                 let slug = link["href"].components(separatedBy: "/").last ?? ""
                 guard !slug.isEmpty, seen.insert(slug).inserted,
@@ -577,8 +577,8 @@ struct FilmoPlaybackProvider: GermanPlaybackProvider {
                       seen.insert(url).inserted else { continue }
                 let year = GermanScrape.scalar(movie["year"]).flatMap(Int.init)
                     ?? GermanScrape.scalar(movie["release_year"]).flatMap(Int.init)
-                    ?? GermanTitleMatching.year(in: GermanScrape.scalar(movie["release_date"]))
-                    ?? GermanTitleMatching.year(in: title)
+                    ?? AnimeMatching.year(GermanScrape.scalar(movie["release_date"]))
+                    ?? AnimeMatching.year(title)
                 ranked.append((url, title, year))
             }
         }
@@ -903,7 +903,7 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
                 guard let anchor else { continue }
                 let raw = anchor.text.isEmpty ? anchor["title"] : anchor.text
                 let cleaned = Self.cleanTitle(raw)
-                let year = GermanTitleMatching.year(in: raw) ?? GermanTitleMatching.year(in: card.text)
+                let year = AnimeMatching.year(raw) ?? GermanTitleMatching.year(in: card.text)
                 guard GermanTitleMatching.matches(cleaned, titles: context.titles),
                       let url = MeinecloudEmbedHelper.normalize(anchor["href"], relativeTo: origin),
                       seen.insert(url).inserted else { continue }
@@ -1055,7 +1055,7 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
                       GermanTitleMatching.matches(Self.showTitle(title), titles: context.titles),
                       let url = MeinecloudEmbedHelper.normalize(href, relativeTo: session.origin),
                       seen.insert(url).inserted else { continue }
-                let year = GermanTitleMatching.year(in: title) ?? GermanTitleMatching.year(in: card.text)
+                let year = AnimeMatching.year(title) ?? GermanTitleMatching.year(in: card.text)
                 ranked.append((url, Self.showTitle(title), year))
             }
             if let best = GermanScrape.bestPage(from: ranked, context: context, preferSeason: season) {
@@ -1229,7 +1229,7 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
             for card in AnimeHTML.parse(html).all({ $0.hasClass("cover-card") }) {
                 guard let anchor = card.first({ $0.tag == "a" && $0["href"].hasPrefix("/serie/") }) else { continue }
                 let title = card.first { $0.tag == "h6" && $0.hasClass("show-title") }?.text ?? ""
-                let year = GermanTitleMatching.year(in: card.text) ?? GermanTitleMatching.year(in: title)
+                let year = AnimeMatching.year(card.text) ?? GermanTitleMatching.year(in: title)
                 guard GermanTitleMatching.matches(title, titles: context.titles) else { continue }
                 let slug = anchor["href"].components(separatedBy: "/").filter { !$0.isEmpty }.last
                 guard let slug, !slug.isEmpty, seen.insert(slug).inserted,
@@ -1353,7 +1353,7 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
                     raw.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 )
                 let year = GermanScrape.scalar(result["year"]).flatMap(Int.init)
-                    ?? GermanTitleMatching.year(in: title)
+                    ?? AnimeMatching.year(title)
                 guard !slug.isEmpty, link.contains("/anime/stream/"),
                       GermanTitleMatching.matches(title, titles: context.titles),
                       seen.insert(slug).inserted,
@@ -1513,7 +1513,190 @@ struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
     }
 }
 
+// MARK: - Public broadcasters
+
+/// Shared helpers for the public-broadcaster JSON APIs, which hand out direct
+/// HLS/MP4 manifests rather than hoster embeds.
+enum PublicBroadcast {
+    static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+    /// `(S01/E03)`, `S1 E3`, `Folge 3` style episode markers in teaser titles.
+    static func episodeMarker(in title: String) -> (season: Int?, episode: Int)? {
+        if let match = AnimeHTML.captures(#"S(\d{1,2})\s*/?\s*E(\d{1,3})"#, in: title).first,
+           let season = Int(match[1]), let episode = Int(match[2]) {
+            return (season, episode)
+        }
+        if let match = AnimeHTML.captures(#"(?:Folge|Episode|Teil)\s*(\d{1,3})"#, in: title).first,
+           let episode = Int(match[1]) {
+            return (nil, episode)
+        }
+        if let match = AnimeHTML.captures(#"\((\d{1,3})/\d{1,3}\)"#, in: title).first,
+           let episode = Int(match[1]) {
+            return (nil, episode)
+        }
+        return nil
+    }
+
+    static func matchesEpisode(_ title: String, context: PlaybackLookupContext) -> Bool {
+        guard let episode = context.request.episode, let marker = episodeMarker(in: title) else { return false }
+        if let season = marker.season { return season == episode.seasonNumber && marker.episode == episode.number }
+        return marker.episode == (context.continuousEpisodeNumber ?? episode.number)
+    }
+
+    static func hoster(
+        name: String,
+        url: URL,
+        referer: URL,
+        subtitles: @escaping @Sendable () async -> [SubtitleSource] = { [] }
+    ) -> GermanHoster {
+        GermanHoster(name: name, url: url, referer: referer, resolve: {
+            PlaybackSource(
+                url: url,
+                headers: ["User-Agent": userAgent],
+                subtitles: await subtitles(),
+                preferredPeakBitRate: nil
+            )
+        })
+    }
+
+    static func subtitle(_ url: URL, label: String, provider: String) -> SubtitleSource {
+        SubtitleSource(
+            providerID: provider.lowercased(),
+            providerName: provider,
+            label: label,
+            languageCode: AnimeStreamResolver.languageCode(label),
+            url: url
+        )
+    }
+}
+
+/// ARD page-gateway: public JSON, no auth. Search hits link item pages whose
+/// `mediaCollection` lists the HLS manifests and subtitle files.
+struct ArdMediathekPlaybackProvider: GermanPlaybackProvider {
+    var id: String { "ardmediathek" }
+    var displayName: String { "ARD Mediathek" }
+    var baseURL: URL { Self.base }
+
+    private static let base = URL(string: "https://api.ardmediathek.de/")!
+    private static let gateway = "https://api.ardmediathek.de/page-gateway"
+
+    func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
+        let isSeries = context.request.media.kind == .series
+        for query in GermanScrape.queries(for: context) {
+            try Task.checkCancellation()
+            guard let search = GermanScrape.url(baseURL, "page-gateway/pages/ard/search", query: [
+                "query": query, "vodPageSize": "24", "showPageSize": "24",
+                "vodPageNumber": "0", "showPageNumber": "0",
+            ]), let root = try? await GermanScrape.client.jsonObject(search, referer: baseURL) else { continue }
+            if isSeries {
+                let shows = (root["showResults"] as? [[String: Any]] ?? []).filter {
+                    GermanScrape.matches(Self.title(of: $0), context: context)
+                }
+                for show in shows.prefix(2) {
+                    guard let target = Self.target(of: show),
+                          let page = try? await GermanScrape.client.jsonObject(target, referer: baseURL) else { continue }
+                    let episodes = Self.teasers(in: page).filter {
+                        !Self.isSeries($0) && PublicBroadcast.matchesEpisode(Self.title(of: $0), context: context)
+                    }
+                    for episode in episodes {
+                        guard let target = Self.target(of: episode) else { continue }
+                        let found = try await streams(at: target)
+                        if !found.isEmpty { return found }
+                    }
+                }
+            } else {
+                let items = (root["vodResults"] as? [[String: Any]] ?? []).filter {
+                    !Self.isSeries($0) && $0["coreAssetType"] as? String != "EVENT_LIVESTREAM"
+                        && GermanScrape.matches(Self.title(of: $0), context: context)
+                }
+                for item in items.prefix(2) {
+                    guard let target = Self.target(of: item) else { continue }
+                    let found = try await streams(at: target)
+                    if !found.isEmpty { return found }
+                }
+            }
+        }
+        return []
+    }
+
+    private func streams(at page: URL) async throws -> [GermanHoster] {
+        let root = try await GermanScrape.client.jsonObject(page, referer: baseURL)
+        var hosters: [GermanHoster] = []
+        for collection in Self.mediaCollections(in: root) {
+            let subtitles = Self.subtitles(in: collection)
+            for stream in collection["streams"] as? [[String: Any]] ?? [] {
+                for media in stream["media"] as? [[String: Any]] ?? [] {
+                    guard let raw = media["url"] as? String, let url = ProviderNetwork.absolute(raw, relativeTo: page) else { continue }
+                    var label = (media["forcedLabel"] as? String) ?? ""
+                    if label.isEmpty, let height = GermanScrape.scalar(media["maxVResolutionPx"]), height != "0" {
+                        label = "\(height)p"
+                    }
+                    hosters.append(PublicBroadcast.hoster(
+                        name: "ARD \(label.isEmpty ? "Auto" : label)",
+                        url: url,
+                        referer: page,
+                        subtitles: { subtitles }
+                    ))
+                }
+            }
+        }
+        return hosters
+    }
+
+    private static func title(of teaser: [String: Any]) -> String {
+        for key in ["shortTitle", "mediumTitle", "longTitle", "title"] {
+            if let value = teaser[key] as? String, !value.isEmpty { return value }
+        }
+        return ""
+    }
+
+    private static func target(of teaser: [String: Any]) -> URL? {
+        guard let target = (teaser["links"] as? [String: Any])?["target"] as? [String: Any],
+              let href = target["href"] as? String else { return nil }
+        if href.hasPrefix("http") { return URL(string: href) }
+        return URL(string: "\(gateway)/\(href.components(separatedBy: "/page-gateway/").last ?? href)")
+    }
+
+    private static func isSeries(_ teaser: [String: Any]) -> Bool {
+        let asset = teaser["coreAssetType"] as? String
+        return asset == "SEASON_SERIES" || asset == "INFINITE_SERIES" || teaser["type"] as? String == "show"
+            || target(of: teaser)?.path.contains("/grouping/") == true
+    }
+
+    private static func teasers(in root: [String: Any]) -> [[String: Any]] {
+        var result = root["teasers"] as? [[String: Any]] ?? []
+        for widget in root["widgets"] as? [[String: Any]] ?? [] {
+            result += widget["teasers"] as? [[String: Any]] ?? []
+        }
+        return result
+    }
+
+    /// Collections arrive either inline or wrapped in `embedded`.
+    private static func mediaCollections(in root: [String: Any]) -> [[String: Any]] {
+        var raw: [[String: Any]] = []
+        if let collection = root["mediaCollection"] as? [String: Any] { raw.append(collection) }
+        for widget in root["widgets"] as? [[String: Any]] ?? [] {
+            if let collection = widget["mediaCollection"] as? [String: Any] { raw.append(collection) }
+        }
+        return raw.map { ($0["embedded"] as? [String: Any]) ?? $0 }
+    }
+
+    private static func subtitles(in collection: [String: Any]) -> [SubtitleSource] {
+        (collection["subtitles"] as? [[String: Any]] ?? []).compactMap { entry in
+            let language = (entry["languageCode"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "de"
+            for source in entry["sources"] as? [[String: Any]] ?? [] {
+                guard let raw = source["url"] as? String, let url = URL(string: raw) else { continue }
+                let kind = (source["kind"] as? String ?? url.pathExtension).lowercased()
+                guard kind.contains("vtt") || kind == "srt" else { continue }
+                return PublicBroadcast.subtitle(url, label: language, provider: "ARD")
+            }
+            return nil
+        }
+    }
+}
+
 // MARK: - Registry
+
 
 enum GermanPlaybackProviders {
     static func all() -> [any PlaybackProvider] {
@@ -1528,6 +1711,7 @@ enum GermanPlaybackProviders {
             SerienStreamPlaybackProvider(),
             AniWorldPlaybackProvider(),
             StreamcloudPlaybackProvider(),
+            ArdMediathekPlaybackProvider(),
         ]
     }
 }
