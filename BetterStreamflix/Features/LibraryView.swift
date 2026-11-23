@@ -19,6 +19,7 @@ struct LibraryView: View {
         case watchlist = "Watchlist"
         case lists = "Lists"
         case watched = "Watched"
+        case downloads = "Downloads"
 
         var id: String { rawValue }
 
@@ -28,6 +29,7 @@ struct LibraryView: View {
             case .watchlist: "Watchlist"
             case .lists: "Lists"
             case .watched: "Watched"
+            case .downloads: "Downloads"
             }
         }
     }
@@ -79,6 +81,8 @@ struct LibraryView: View {
                     listsContent
                 case .watched:
                     watchedContent
+                case .downloads:
+                    DownloadsListView { playback = $0 }
                 }
             }
         }

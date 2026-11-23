@@ -3718,6 +3718,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
     let onOpenSubtitleSync: () -> Void
     let onOpenSubtitlePicker: () -> Void
     let onOpenSourcePicker: () -> Void
+    var onDownload: (() -> Void)? = nil
     let onRetryPlayback: () -> Void
     let onTryNextSource: () -> Void
     let onZoomChanged: (Bool) -> Void
@@ -3733,6 +3734,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onOpenSubtitleSync: onOpenSubtitleSync,
             onOpenSubtitlePicker: onOpenSubtitlePicker,
             onOpenSourcePicker: onOpenSourcePicker,
+            onDownload: onDownload,
             onRetryPlayback: onRetryPlayback,
             onTryNextSource: onTryNextSource,
             isZoomedToFill: isZoomedToFill,
@@ -3804,6 +3806,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private let onOpenSubtitleSync: () -> Void
         private let onOpenSubtitlePicker: () -> Void
         private let onOpenSourcePicker: () -> Void
+        private let onDownload: (() -> Void)?
         private let onRetryPlayback: () -> Void
         private let onTryNextSource: () -> Void
         private let onWillDismiss: () -> Void
@@ -3853,6 +3856,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onOpenSubtitleSync: @escaping () -> Void,
             onOpenSubtitlePicker: @escaping () -> Void,
             onOpenSourcePicker: @escaping () -> Void,
+            onDownload: (() -> Void)?,
             onRetryPlayback: @escaping () -> Void,
             onTryNextSource: @escaping () -> Void,
             isZoomedToFill: Bool,
@@ -3867,6 +3871,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             self.onOpenSubtitleSync = onOpenSubtitleSync
             self.onOpenSubtitlePicker = onOpenSubtitlePicker
             self.onOpenSourcePicker = onOpenSourcePicker
+            self.onDownload = onDownload
             self.onRetryPlayback = onRetryPlayback
             self.onTryNextSource = onTryNextSource
             prefersZoomedToFill = isZoomedToFill
@@ -4450,6 +4455,18 @@ struct NativePlayerController: UIViewControllerRepresentable {
                         image: UIImage(systemName: "list.bullet.rectangle")
                     ) { [weak self] _ in
                         self?.onOpenSubtitlePicker()
+                    }
+                )
+            }
+
+            if let onDownload {
+                sections.append(
+                    UIAction(
+                        title: "Download",
+                        subtitle: "Save this source for offline playback",
+                        image: UIImage(systemName: "arrow.down.circle")
+                    ) { _ in
+                        onDownload()
                     }
                 )
             }

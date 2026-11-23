@@ -1252,6 +1252,14 @@ struct PlayerScreen: View {
     @State private var episodeLoadTask: Task<Void, Never>?
     @State private var showSourceFilters = false
 
+    private func downloadCurrentSource() {
+        guard let source = model.source else { return }
+        let candidate = model.streams.first { $0.id == model.selectedSourceID }?.candidate
+            ?? model.streams.first?.candidate
+        let queued = DownloadManager.shared.start(request: model.request, source: source, candidate: candidate)
+        UINotificationFeedbackGenerator().notificationOccurred(queued ? .success : .warning)
+    }
+
     init(request: PlaybackRequest, nextRequest: PlaybackRequest?) {
         _model = StateObject(wrappedValue: PlayerViewModel(request: request))
         _nextRequest = State(initialValue: nextRequest)
@@ -1465,6 +1473,9 @@ struct PlayerScreen: View {
             },
             onOpenSourcePicker: {
                 showSourceFilters = true
+            },
+            onDownload: {
+                downloadCurrentSource()
             },
             onRetryPlayback: {
                 model.resetRecovery()
