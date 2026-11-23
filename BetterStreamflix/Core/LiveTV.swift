@@ -386,6 +386,196 @@ struct VavooLiveProvider: LiveTVProvider {
     }
 }
 
+/// Sports events and 24/7 channels from the ppv.st API that SportsBite uses,
+/// ported from BetterStreamflix Android's SportsBiteProvider. Entries point at
+/// embed pages; the HLS URL is scraped from the embed (or a nested iframe or a
+/// known mirror host) right before playback.
+struct SportsBiteLiveProvider: LiveTVProvider {
+    var id: String { "sportsbite" }
+    var displayName: String { "SportsBite" }
+    var language: String { "multi" }
+
+    private static let site = URL(string: "https://sportsbite.org")!
+    private static let streamsAPI = URL(string: "https://api.ppv.st/api/streams")!
+    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    private static let mirrorHosts = ["embed.ppv.st", "embed.cr7siuu.xyz", "embed.weakstream.xyz", "embedstreams.net"]
+    private static let cache = LiveCatalogCache<[LiveChannel]>()
+
+    func channels() async throws -> [LiveChannel] {
+        let id = id
+        return try await Self.cache.value(maxAge: 10 * 60) {
+            var request = URLRequest(url: Self.streamsAPI, timeoutInterval: 20)
+            request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue(Self.site.absoluteString, forHTTPHeaderField: "Origin")
+            request.setValue(Self.site.absoluteString + "/", forHTTPHeaderField: "Referer")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { throw AppError.invalidResponse }
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let categories = root["streams"] as? [[String: Any]] else { throw AppError.invalidResponse }
+            var result: [LiveChannel] = []
+            for category in categories {
+                let categoryName = (category["category"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Sports"
+                for stream in category["streams"] as? [[String: Any]] ?? [] {
+                    guard let name = (stream["name"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty,
+                          let iframe = (stream["iframe"] as? String)?.trimmingCharacters(in: .whitespaces),
+                          let embed = URL(string: iframe), embed.scheme?.hasPrefix("http") == true else { continue }
+                    let key = (stream["uri_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? stream["id"].map { "\($0)" } ?? iframe
+                    let poster = (stream["poster"] as? String) ?? (stream["image"] as? String)
+                    let group = (stream["category_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? categoryName
+                    let tag = (stream["tag"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    let startsAt = (stream["starts_at"] as? Double) ?? 0
+                    let alwaysLive = (stream["always_live"] as? Int) == 1 || (stream["always_live"] as? Bool) == true
+                    var channel = LiveChannel(
+                        id: "\(id):\(key)", providerID: id, name: name,
+                        logo: poster.flatMap(URL.init(string:)), group: group,
+                        streamURL: embed, headers: ["User-Agent": Self.userAgent, "Referer": Self.site.absoluteString + "/"]
+                    )
+                    if alwaysLive {
+                        channel.programNow = tag ?? "24/7"
+                    } else if startsAt > 0 {
+                        let start = Date(timeIntervalSince1970: startsAt)
+                        channel.programNow = start <= Date() ? "Live now" : "Starts \(start.formatted(date: .abbreviated, time: .shortened))"
+                    }
+                    result.append(channel)
+                }
+            }
+            if result.isEmpty { throw AppError.invalidResponse }
+            return result
+        }
+    }
+
+    func resolve(_ channel: LiveChannel) async throws -> PlaybackSource {
+        let embed = channel.streamURL
+        if let html = try? await Self.html(embed, referer: Self.site) {
+            if let stream = LiveStreamHTMLExtractor.m3u8(in: html) {
+                return Self.source(stream, referer: embed)
+            }
+            if let nested = LiveStreamHTMLExtractor.embedURL(in: html),
+               let nestedHTML = try? await Self.html(nested, referer: embed),
+               let stream = LiveStreamHTMLExtractor.m3u8(in: nestedHTML) {
+                return Self.source(stream, referer: nested)
+            }
+        }
+        let raw = embed.absoluteString
+        if raw.contains("embedindia.st") || raw.contains("embed.ppv.st") {
+            for host in Self.mirrorHosts {
+                let mirrored = raw.replacingOccurrences(of: "embedindia.st", with: host).replacingOccurrences(of: "embed.ppv.st", with: host)
+                guard mirrored != raw, let url = URL(string: mirrored),
+                      let html = try? await Self.html(url, referer: Self.site),
+                      let stream = LiveStreamHTMLExtractor.m3u8(in: html) else { continue }
+                return Self.source(stream, referer: url)
+            }
+        }
+        throw AppError.invalidResponse
+    }
+
+    private static func source(_ stream: URL, referer: URL) -> PlaybackSource {
+        PlaybackSource(url: stream, headers: ["User-Agent": userAgent, "Referer": referer.absoluteString], subtitles: [], preferredPeakBitRate: nil)
+    }
+
+    private static func html(_ url: URL, referer: URL) async throws -> String {
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { throw AppError.invalidResponse }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// HLS URL extraction from live embed pages, ported from BetterStreamflix
+/// Android's LiveStreamHtmlExtractor (assigned SRC, file/source keys, atob
+/// payloads, XOR arrays, then any .m3u8 literal, preferring master playlists).
+enum LiveStreamHTMLExtractor {
+    private static let adMarkers = ["exmxbxe.", "assetrage.", "llvpn.com", "histats.", "aclib.", "wpnxis", "blogspot.com"]
+
+    static func m3u8(in html: String) -> URL? {
+        guard !html.isEmpty else { return nil }
+        let keyed = [
+            #"(?:const|let|var)\s+SRC\s*=\s*["'](https?://[^"']+\.m3u8[^"']*)["']"#,
+            #"(?:file|source|src|url)\s*[:=]\s*["'](https?://[^"']+\.m3u8[^"']*)["']"#,
+            #"<source[^>]+src=["'](https?://[^"']+\.m3u8[^"']*)["']"#,
+            #"["']file["']\s*:\s*["'](https?://[^"']+\.m3u8[^"']*)["']"#,
+            #"sources?\s*:\s*\[\s*["'](https?://[^"']+\.m3u8[^"']*)["']"#
+        ]
+        for pattern in keyed {
+            if let value = captures(pattern, in: html).first?[1], let url = URL(string: unescape(value)) { return url }
+        }
+        let chunks = captures(#"atob\(['"]([^'"]+)['"]\)"#, in: html).compactMap { decodeBase64($0[1]) }
+        if let best = pickBest(chunks.filter { $0.hasPrefix("http") && $0.localizedCaseInsensitiveContains(".m3u8") }) {
+            return URL(string: best)
+        }
+        if chunks.count >= 2 {
+            let joined = chunks.joined()
+            if joined.hasPrefix("http"), joined.localizedCaseInsensitiveContains(".m3u8") { return URL(string: joined) }
+        }
+        if let decoded = xorArray(in: html), let found = captures(#"https?://[^"'\\\s<>]+?\.m3u8[^"'\\\s<>]*"#, in: decoded).first?[0] {
+            return URL(string: found)
+        }
+        let literals = captures(#"https?:(?:\\?/){2}[^"'\s<>]+?\.m3u8[^"'\s<>]*"#, in: html).map { unescape($0[0]) }
+        if let best = pickBest(literals) { return URL(string: best) }
+        let relative = captures(#"(?<![:\w])//[^"'\\\s<>]+?\.m3u8[^"'\\\s<>]*"#, in: html).map { "https:" + unescape($0[0]) }
+        return pickBest(relative).flatMap(URL.init(string:))
+    }
+
+    static func embedURL(in html: String) -> URL? {
+        var candidates: [String] = []
+        for pattern in [
+            #"<iframe[^>]+id=["']thatframe["'][^>]+src=["']([^"']+)["']"#,
+            #"<iframe[^>]+src=["']([^"']+)["'][^>]+id=["']thatframe["']"#,
+            #"<iframe[^>]+class=["'][^"']*video[^"']*["'][^>]+src=["']([^"']+)["']"#,
+            #"<iframe[^>]+src=["'](https?://[^"']+)["']"#
+        ] {
+            candidates += captures(pattern, in: html).map { $0[1].trimmingCharacters(in: .whitespaces) }
+        }
+        let usable = candidates.filter { $0.lowercased().hasPrefix("http") && !adMarkers.contains(where: $0.lowercased().contains) }
+        let preferred = usable.first { value in ["embed", "player", "stream", "premiumtv"].contains { value.localizedCaseInsensitiveContains($0) } }
+        return (preferred ?? usable.first).flatMap(URL.init(string:))
+    }
+
+    private static func pickBest(_ candidates: [String]) -> String? {
+        func score(_ url: String) -> Int {
+            let lower = url.lowercased()
+            var value = 0
+            if lower.contains("master") { value += 40 }
+            if lower.contains("index") { value += 25 }
+            if lower.contains("playlist") { value += 15 }
+            if lower.contains("chunklist") { value -= 20 }
+            if adMarkers.contains(where: lower.contains) { value -= 100 }
+            return value
+        }
+        return candidates.max { (score($0), $0.count) < (score($1), $1.count) }
+    }
+
+    private static func xorArray(in html: String) -> String? {
+        guard let match = captures(#"var\s+_(\w+)=\[([^\]]+)\],_(\w+)=(\d+),_(\w+)=(\d+)"#, in: html).first,
+              let xor = Int(match[4]), let sub = Int(match[6]) else { return nil }
+        let bytes = match[2].split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            .map { UInt8(truncatingIfNeeded: (($0 ^ xor) - sub + 256) & 255) }
+        return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
+    }
+
+    private static func decodeBase64(_ value: String) -> String? {
+        var padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while padded.count % 4 != 0 { padded += "=" }
+        return Data(base64Encoded: padded).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    private static func unescape(_ value: String) -> String { value.replacingOccurrences(of: "\\/", with: "/") }
+
+    private static func captures(_ pattern: String, in text: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        let ns = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { match in
+            (0..<match.numberOfRanges).map { index in
+                let range = match.range(at: index)
+                return range.location == NSNotFound ? "" : ns.substring(with: range)
+            }
+        }
+    }
+}
+
 private actor LiveCatalogCache<Value: Sendable> {
     private var cached: (fetchedAt: Date, value: Value)?
     private var inFlight: Task<Value, Error>?
@@ -413,6 +603,7 @@ enum LiveTVProviders {
             M3UPlaylistLiveProvider.plutoTVDE, M3UPlaylistLiveProvider.plutoTVUS,
             VavooLiveProvider.de, VavooLiveProvider.en, VavooLiveProvider.it,
             VavooLiveProvider.fr, VavooLiveProvider.es, VavooLiveProvider.pl,
+            SportsBiteLiveProvider(),
             M3UPlaylistLiveProvider.iptvOrg
         ]
     }
