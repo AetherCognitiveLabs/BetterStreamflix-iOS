@@ -249,7 +249,7 @@ final class HomeViewModel: ObservableObject {
                 }
             }
             let heroTitles = try await hero
-            trendingTitles = heroTitles
+            trendingTitles = KidsContentFilter.apply(heroTitles)
             trendingMessage = trendingTitles.isEmpty ? "TMDB did not return any trending titles." : nil
             carouselAssets = await environment.preloadCarouselAssets(for: heroTitles)
             carouselLogosResolved = true
@@ -416,7 +416,7 @@ final class SearchViewModel: ObservableObject {
                     merged.append(item)
                 }
                 guard searchGeneration == generation else { return }
-                results = merged
+                results = KidsContentFilter.apply(merged)
                 rememberSearch(value)
             }
             catch where error.isCancellation { }

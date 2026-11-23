@@ -44,6 +44,8 @@
 		4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */; };
 		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
 		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
+		B29E960129BE1FE19D717A60 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 341151F21A927E13A2C2827E /* ProfilesView.swift */; };
+		30A1E81809761C381809705C /* Profiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */; };
 		EEE3A6A39E99C04F45D2C4EB /* ProviderSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A0718531DA898DD62C2312 /* ProviderSmoke.swift */; };
 		AC0B740303A1A4EDA1242C2C /* VavooSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454364E54CD8415C3FAF89F7 /* VavooSignature.swift */; };
 		A976D66503674927AE90E7E4 /* LiveEPG.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */; };
@@ -164,6 +166,8 @@
 		80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeStreamResolver.swift; sourceTree = "<group>"; };
 		8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityProvider.swift; sourceTree = "<group>"; };
 		92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VixcloudResolver.swift; sourceTree = "<group>"; };
+		341151F21A927E13A2C2827E /* ProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesView.swift; sourceTree = "<group>"; };
+		0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profiles.swift; sourceTree = "<group>"; };
 		22A0718531DA898DD62C2312 /* ProviderSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSmoke.swift; sourceTree = "<group>"; };
 		454364E54CD8415C3FAF89F7 /* VavooSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VavooSignature.swift; sourceTree = "<group>"; };
 		8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveEPG.swift; sourceTree = "<group>"; };
@@ -289,6 +293,7 @@
 				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
 				1BDE955356AA93FC1945591F /* UserDataBackup.swift */,
 				92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */,
+				0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */,
 				22A0718531DA898DD62C2312 /* ProviderSmoke.swift */,
 				454364E54CD8415C3FAF89F7 /* VavooSignature.swift */,
 				8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */,
@@ -357,6 +362,7 @@
 				C818F91DFC7B8CD970980CB3 /* DownloadsListView.swift */,
 				DFE14C89AE62D17D95BA0E93 /* LiveTVView.swift */,
 				83D39EA2990020C9E058030F /* LivePlayerView.swift */,
+				341151F21A927E13A2C2827E /* ProfilesView.swift */,
 				A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */,
 				A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */,
 				4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */,
@@ -537,6 +543,8 @@
 				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
 				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
 				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
+				B29E960129BE1FE19D717A60 /* ProfilesView.swift in Sources */,
+				30A1E81809761C381809705C /* Profiles.swift in Sources */,
 				EEE3A6A39E99C04F45D2C4EB /* ProviderSmoke.swift in Sources */,
 				AC0B740303A1A4EDA1242C2C /* VavooSignature.swift in Sources */,
 				A976D66503674927AE90E7E4 /* LiveEPG.swift in Sources */,

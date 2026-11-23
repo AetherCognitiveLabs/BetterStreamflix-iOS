@@ -28,7 +28,7 @@ final class LibraryStore: ObservableObject {
     }
 
     private let fileManager: FileManager
-    private let directory: URL
+    private var directory: URL
     private let encoder: JSONEncoder
     private let decoder = JSONDecoder()
     private var currentSeriesProgressKeys: [String: String] = [:]
@@ -45,8 +45,8 @@ final class LibraryStore: ObservableObject {
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         // Keep the pre-rebrand directory so an in-place BetterStreamflix update retains every user's library.
-        self.directory = directory
-            ?? support.appending(path: "BetterStreamflix", directoryHint: .isDirectory)
+        _ = support
+        self.directory = directory ?? Self.defaultDirectory(fileManager: fileManager)
         encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -423,6 +423,19 @@ final class LibraryStore: ObservableObject {
             )
         }
         saveProgress()
+    }
+
+    nonisolated static func defaultDirectory(fileManager: FileManager = .default) -> URL {
+        let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        // Keep the pre-rebrand directory so an in-place BetterStreamflix update retains every user's library.
+        return support.appending(path: "BetterStreamflix", directoryHint: .isDirectory)
+    }
+
+    /// Points the store at another profile's library directory and reloads it.
+    func switchDirectory(_ newDirectory: URL?) {
+        directory = newDirectory ?? Self.defaultDirectory(fileManager: fileManager)
+        load()
     }
 
     private func load() {

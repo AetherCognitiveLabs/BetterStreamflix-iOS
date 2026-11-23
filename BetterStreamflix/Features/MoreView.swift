@@ -52,6 +52,14 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
+                            title: "Profiles",
+                            subtitle: "\(ProfileStore.shared.activeProfile.displayName) · switch, Kids, PIN",
+                            systemImage: "person.2.fill"
+                        ) {
+                            path.append(MoreRoute.profiles)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
                             title: "Live TV",
                             subtitle: "Pluto TV, Vavoo, sports & IPTV channels",
                             systemImage: "dot.radiowaves.left.and.right"
@@ -186,6 +194,8 @@ struct MoreView: View {
                     StremioDebridSettingsView()
                 case .liveTV:
                     LiveTVView()
+                case .profiles:
+                    ProfilesView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -353,7 +363,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV
+    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles
 }
 
 private extension MoreView {

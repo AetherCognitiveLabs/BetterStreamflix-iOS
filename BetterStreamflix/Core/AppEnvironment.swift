@@ -409,7 +409,7 @@ final class AppEnvironment: ObservableObject {
             KtuvitSubtitleProvider(),
             StremioSubtitleProvider(),
         ])
-        library = LibraryStore()
+        library = LibraryStore(directory: ProfileStore.libraryDirectory(for: ProfileStore.persistedActiveID()))
         // Warm the Stremio addon store so curated defaults seed in the background.
         _ = StremioAddonStore.shared
     }
