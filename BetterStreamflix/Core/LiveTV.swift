@@ -160,3 +160,92 @@ enum M3UPlaylistParser {
         return ""
     }
 }
+
+private actor LivePlaylistCache {
+    static let shared = LivePlaylistCache()
+    private var entries: [String: (fetchedAt: Date, channels: [LiveChannel])] = [:]
+    private var inFlight: [String: Task<[LiveChannel], Error>] = [:]
+
+    func channels(
+        for key: String,
+        maxAge: TimeInterval,
+        load: @escaping @Sendable () async throws -> [LiveChannel]
+    ) async throws -> [LiveChannel] {
+        if let cached = entries[key], Date().timeIntervalSince(cached.fetchedAt) < maxAge {
+            return cached.channels
+        }
+        if let task = inFlight[key] { return try await task.value }
+        let task = Task { try await load() }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
+        do {
+            let channels = try await task.value
+            entries[key] = (Date(), channels)
+            return channels
+        } catch {
+            if let stale = entries[key]?.channels, !stale.isEmpty { return stale }
+            throw error
+        }
+    }
+}
+
+/// Providers backed by a single public M3U playlist (Pluto TV regional
+/// playlists, IPTV-org), ported from BetterStreamflix Android's
+/// PlutoTv*Provider / IptvOrgProvider. Playlists are cached for 30 minutes.
+struct M3UPlaylistLiveProvider: LiveTVProvider {
+    let id: String
+    let displayName: String
+    let language: String
+    let playlistURL: URL
+
+    static let fetchUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+
+    static let plutoTVDE = M3UPlaylistLiveProvider(
+        id: "plutotvde", displayName: "Pluto TV DE", language: "de",
+        playlistURL: URL(string: "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_de.m3u")!
+    )
+    static let plutoTVUS = M3UPlaylistLiveProvider(
+        id: "plutotvus", displayName: "Pluto TV US", language: "en",
+        playlistURL: URL(string: "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_us.m3u")!
+    )
+    static let iptvOrg = M3UPlaylistLiveProvider(
+        id: "iptvorg", displayName: "IPTV-org", language: "multi",
+        playlistURL: URL(string: "https://iptv-org.github.io/iptv/index.m3u")!
+    )
+
+    func channels() async throws -> [LiveChannel] {
+        let id = id, url = playlistURL
+        return try await LivePlaylistCache.shared.channels(for: id, maxAge: 30 * 60) {
+            var request = URLRequest(url: url, timeoutInterval: 30)
+            request.setValue(Self.fetchUserAgent, forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw AppError.invalidResponse
+            }
+            let text = String(decoding: data, as: UTF8.self)
+            var seen: Set<String> = []
+            let channels = M3UPlaylistParser.parse(text).compactMap { entry -> LiveChannel? in
+                guard seen.insert(entry.name.lowercased()).inserted else { return nil }
+                return LiveChannel(
+                    id: "\(id):\(entry.tvgID ?? entry.url.absoluteString)",
+                    providerID: id,
+                    name: entry.name,
+                    logo: entry.logo.flatMap(URL.init(string:)),
+                    group: entry.group.map { $0.components(separatedBy: ";").first ?? $0 },
+                    streamURL: entry.url,
+                    headers: entry.headers,
+                    epgID: entry.tvgID,
+                    channelNumber: entry.channelNumber
+                )
+            }
+            if channels.isEmpty { throw AppError.invalidResponse }
+            return channels
+        }
+    }
+}
+
+enum LiveTVProviders {
+    static func all() -> [any LiveTVProvider] {
+        [M3UPlaylistLiveProvider.plutoTVDE, M3UPlaylistLiveProvider.plutoTVUS, M3UPlaylistLiveProvider.iptvOrg]
+    }
+}
