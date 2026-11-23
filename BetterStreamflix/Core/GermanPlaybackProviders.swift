@@ -1413,6 +1413,98 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
 
 // MARK: - StreamCloud
 
+// MARK: - KellerKino
+
+/// WordPress film archive behind Cloudflare; pages go through the lazy
+/// CloudflareResolver. Movies only, like the Android source.
+struct KellerKinoPlaybackProvider: GermanPlaybackProvider {
+    var id: String { "kellerkino" }
+    var displayName: String { "KellerKino" }
+    var baseURL: URL { Self.base }
+
+    private static let base = URL(string: "https://www.kellerkino.com/")!
+    private static let serverMarkers = ["voe", "streamtape", "dood", "lulu", "vidara", "vinovo", "stream", "watch", "embed"]
+
+    func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
+        guard context.request.media.kind != .series else { return [] }
+        for query in GermanScrape.queries(for: context) {
+            try Task.checkCancellation()
+            for path in ["", "suche/", "search/"] {
+                guard let searchURL = URL(string: "\(Self.base.absoluteString)\(path)?s=\(ProviderNetwork.encoded(query))"),
+                      let html = try? await CloudflareResolver.page(searchURL, referer: Self.base) else { continue }
+                let candidates = Self.candidates(in: html)
+                guard !candidates.isEmpty else { continue }
+                guard let detail = GermanScrape.bestPage(from: candidates, context: context, preferSeason: nil) else { break }
+                let detailHTML = try await CloudflareResolver.page(detail, referer: searchURL)
+                let servers = Self.servers(in: detailHTML)
+                if !servers.isEmpty {
+                    return servers.map { GermanHoster(name: $0.name, url: $0.url, referer: detail) }
+                }
+                break
+            }
+        }
+        return []
+    }
+
+    /// Result cards are poster anchors on the site's own host.
+    private static func candidates(in html: String) -> [(url: URL, title: String, year: Int?)] {
+        var seen: Set<String> = []
+        var result: [(url: URL, title: String, year: Int?)] = []
+        for match in AnimeHTML.captures(#"<a([^>]*)>([\s\S]*?)</a>"#, in: html) {
+            let attrs = match[1], inner = match[2]
+            guard inner.contains("<img"),
+                  let href = AnimeHTML.captures(#"href="([^"]+)""#, in: attrs).first?[1],
+                  let url = ProviderNetwork.absolute(href, relativeTo: base),
+                  url.host?.contains("kellerkino") == true, url.path.count > 1,
+                  !url.path.contains("/kategorie"), !url.path.contains("/page/"),
+                  seen.insert(url.absoluteString).inserted else { continue }
+            let alt = AnimeHTML.captures(#"alt="([^"]+)""#, in: inner).first?[1]
+            let titleAttr = AnimeHTML.captures(#"title="([^"]+)""#, in: attrs).first?[1]
+            let text = inner.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+            let raw = [titleAttr, alt, text].compactMap { $0 }
+                .map { HTMLPayloadParser.decodeEntities($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty } ?? ""
+            guard !raw.isEmpty else { continue }
+            result.append((url: url, title: raw, year: AnimeMatching.year(raw)))
+        }
+        return result
+    }
+
+    /// iframes, hoster-looking anchors and data-* player URLs, minus trailers
+    /// and links back into the archive.
+    private static func servers(in html: String) -> [(name: String, url: URL)] {
+        var seen: Set<String> = []
+        var result: [(name: String, url: URL)] = []
+        func add(_ raw: String, label: String?) {
+            guard let url = ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities(raw), relativeTo: base),
+                  url.scheme?.hasPrefix("http") == true else { return }
+            let host = (url.host ?? "").replacingOccurrences(of: "www.", with: "")
+            let name = label?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? host
+            let lowerName = name.lowercased(), lowerURL = url.absoluteString.lowercased()
+            if lowerName.hasPrefix("trailer") || lowerURL.contains("/trailer") || lowerURL.contains("youtube") { return }
+            if host.contains("kellerkino") { return }
+            guard seen.insert(url.absoluteString).inserted else { return }
+            result.append((name: name.isEmpty ? "Server" : name, url: url))
+        }
+        for match in AnimeHTML.captures(#"<iframe([^>]*)>"#, in: html) {
+            guard let src = AnimeHTML.captures(#"\ssrc="([^"]+)""#, in: match[1]).first?[1] else { continue }
+            add(src, label: AnimeHTML.captures(#"title="([^"]+)""#, in: match[1]).first?[1])
+        }
+        for match in AnimeHTML.captures(#"<a([^>]*)>([\s\S]*?)</a>"#, in: html) {
+            guard let href = AnimeHTML.captures(#"href="([^"]+)""#, in: match[1]).first?[1] else { continue }
+            let text = match[2].replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            let combined = "\(href) \(text)".lowercased()
+            guard serverMarkers.contains(where: combined.contains) else { continue }
+            add(href, label: text)
+        }
+        for match in AnimeHTML.captures(#"data-(?:url|src|link)="((?:https?:)?//[^"]+)""#, in: html) {
+            add(match[1], label: nil)
+        }
+        return result
+    }
+}
+
+
 /// Datalife Engine site whose detail pages embed devideosrc.co keyed by IMDb
 /// id; the embed page's token unlocks `POST /api/embed-links`, which returns
 /// the standard hoster embed set (dropload, doodstream, mixdrop, voe,
@@ -1911,6 +2003,7 @@ enum GermanPlaybackProviders {
             SerienStreamPlaybackProvider(),
             AniWorldPlaybackProvider(),
             StreamcloudPlaybackProvider(),
+            KellerKinoPlaybackProvider(),
             ArdMediathekPlaybackProvider(),
             ZdfMediathekPlaybackProvider(),
             ArtePlaybackProvider(),
