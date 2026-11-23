@@ -570,3 +570,34 @@ struct AnimeWorldPlaybackProvider: ScrapedPlaybackProvider {
         return []
     }
 }
+
+// MARK: - AltadefinizioneX
+
+/// Classic DLE Altadefinizione mirror. Its players are VixSrc (keyed on the
+/// IMDb id, Italian audio) and VidxGo, so the links are built from the IMDb id.
+struct AltadefinizioneXPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "altadefinizionex" }
+    var displayName: String { "AltadefinizioneX" }
+    var baseURL: URL { URL(string: "https://altadefinizionex.stream/")! }
+    var audioLanguage: String { "it" }
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        guard let imdb = context.request.media.imdbID, imdb.hasPrefix("tt") else { return [] }
+        let numeric = String(imdb.dropFirst(2))
+        var urls: [(String, String)]
+        if let episode = context.request.episode {
+            urls = [
+                ("VixSrc", "https://vixsrc.to/tv/\(imdb)/\(episode.seasonNumber)/\(episode.number)?lang=it"),
+                ("VidxGo", "https://v.vidxgo.co/t/\(numeric)/\(episode.seasonNumber)/\(episode.number)"),
+            ]
+        } else {
+            urls = [
+                ("VixSrc", "https://vixsrc.to/movie/\(imdb)?lang=it"),
+                ("VidxGo", "https://v.vidxgo.co/\(numeric)"),
+            ]
+        }
+        return urls.compactMap { name, raw in
+            URL(string: raw).map { HosterLink(name: name, url: $0, referer: baseURL, audioLanguage: "it") }
+        }
+    }
+}

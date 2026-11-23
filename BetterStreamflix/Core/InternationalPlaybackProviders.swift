@@ -792,6 +792,7 @@ enum InternationalPlaybackProviders {
             GuardaSeriePlaybackProvider(),
             StreamingItaPlaybackProvider(),
             AnimeWorldPlaybackProvider(),
+            AltadefinizioneXPlaybackProvider(),
         ]
     }
 

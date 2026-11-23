@@ -110,6 +110,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case guardaserie
     case streamingita
     case animeworld
+    case altadefinizionex
 
     // Spanish
     case fanpelis
@@ -161,7 +162,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime:
             return .english
         case .altadefinizione01, .guardaflix, .cb01, .animeunity, .animesaturn,
-             .guardaserie, .streamingita, .animeworld:
+             .guardaserie, .streamingita, .animeworld, .altadefinizionex:
             return .italian
         case .fanpelis, .cinecalidad, .flixlatam, .seriesflix, .seriesturcas,
              .lacartoons, .animefenix, .animeflv, .jkanime, .tioanime, .animeav1,
@@ -214,6 +215,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .guardaserie: "GuardaSerie"
         case .streamingita: "StreamingIta"
         case .animeworld: "AnimeWorld"
+        case .altadefinizionex: "AltadefinizioneX"
         case .fanpelis: "Fanpelis"
         case .cinecalidad: "CineCalidad"
         case .flixlatam: "FlixLatam"
