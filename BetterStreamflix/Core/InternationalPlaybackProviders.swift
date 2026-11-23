@@ -934,6 +934,7 @@ enum InternationalPlaybackProviders {
             UnJourUnFilmPlaybackProvider(),
             AfterDarkPlaybackProvider(),
             VostfreePlaybackProvider(),
+            MiawPlaybackProvider(),
             VavooVodPlaybackProvider.fr,
         ]
     }

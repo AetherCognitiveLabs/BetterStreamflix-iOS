@@ -152,6 +152,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case unjourunfilm
     case afterdark
     case vostfree
+    case miaw
     case vavoovodFr
 
     // Polish
@@ -179,7 +180,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
              .cine24h, .pelisplusto, .pelisflixhd, .poseidonhd2, .cinehax, .vavoovodEs:
             return .spanish
         case .wiflix, .frenchanime, .frenchstream, .frembed, .kidraz,
-             .frenchmanga, .unjourunfilm, .afterdark, .vostfree, .vavoovodFr:
+             .frenchmanga, .unjourunfilm, .afterdark, .vostfree, .miaw, .vavoovodFr:
             return .french
         case .filmyonlinecc, .zaluknij, .vavoovodPl:
             return .polish
@@ -262,6 +263,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .unjourunfilm: "1Jour1Film"
         case .afterdark: "AfterDark"
         case .vostfree: "Vostfree"
+        case .miaw: "Miaw"
         case .vavoovodFr: "Vavoo VOD FR"
         case .filmyonlinecc: "FilmyOnline"
         case .zaluknij: "Zaluknij"

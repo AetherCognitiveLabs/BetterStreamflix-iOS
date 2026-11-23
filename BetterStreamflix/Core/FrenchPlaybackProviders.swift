@@ -671,3 +671,62 @@ struct VostfreePlaybackProvider: ScrapedPlaybackProvider {
         return ProviderNetwork.absolute(raw, relativeTo: base)
     }
 }
+
+// MARK: - Miaw
+
+/// Next.js site with a public JSON search; watch pages declare Vidzy/Miwav
+/// embeds server-side, which the shared Vidzy extractor resolves.
+struct MiawPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "miaw" }
+    var displayName: String { "Miaw" }
+    var audioLanguage: String { "fr" }
+    var baseURL: URL { URL(string: "https://miaw.tv/")! }
+
+    private static let embedPattern = #"https?://(?:www\.)?(?:vidzy\.org|miwav\.net)/(?:movie|serie|e|embed)/[^"'\s\\<>]+"#
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let wantsSeries = context.request.media.kind == .series
+        for query in TitleMatch.queries(for: context) {
+            try Task.checkCancellation()
+            guard let payload = try? await jsonObject(url("api/search", query: ["q": query])),
+                  let titles = (payload["data"] as? [String: Any])?["titles"] as? [[String: Any]] else { continue }
+            let rows = titles.filter { ($0["available"] as? Bool) != false && ($0["kind"] as? String) == (wantsSeries ? "series" : "movie") }
+            let byTMDB = context.request.media.tmdbID.flatMap { tmdb in
+                rows.first { ($0["id"] as? Int) == tmdb }
+            }
+            let slug: String?
+            if let byTMDB {
+                slug = byTMDB["slug"] as? String
+            } else {
+                let results = rows.compactMap { row -> ScrapedResult? in
+                    guard let slug = row["slug"] as? String, let title = row["title"] as? String,
+                          let page = try? url("\(wantsSeries ? "series" : "film")/\(slug)") else { return nil }
+                    return ScrapedResult(title: title, year: row["year"] as? Int, kind: wantsSeries ? .series : .movie, url: page)
+                }
+                slug = results.bestMatch(for: context)?.url.lastPathComponent
+            }
+            guard let slug else { continue }
+            let path: String
+            if let episode = context.request.episode {
+                path = "series/\(slug)/episode/\(episode.number)/saison/\(episode.seasonNumber)"
+            } else {
+                path = "film/\(slug)/regarder"
+            }
+            let watch = try url(path)
+            let page = try await text(watch)
+            let labels = AnimeHTML.captures(#"data-player-label="([^"]+)""#, in: page).map { HTMLPayloadParser.decodeEntities($0[1]) }
+            var seen: Set<String> = []
+            let embeds = AnimeHTML.captures(Self.embedPattern, in: page).compactMap { match -> URL? in
+                let raw = match[0].replacingOccurrences(of: "\\u0026", with: "&").replacingOccurrences(of: "&amp;", with: "&")
+                let key = raw.components(separatedBy: "?").first ?? raw
+                guard seen.insert(key).inserted else { return nil }
+                return URL(string: raw)
+            }
+            return embeds.enumerated().map { index, embed in
+                HosterLink(name: labels.indices.contains(index) ? labels[index] : "Miaw \(index + 1)",
+                           url: embed, referer: watch, audioLanguage: "fr")
+            }
+        }
+        return []
+    }
+}
