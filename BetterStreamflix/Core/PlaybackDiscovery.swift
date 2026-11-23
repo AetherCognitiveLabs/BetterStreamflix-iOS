@@ -143,9 +143,10 @@ struct EnrichedPlaybackProvider: PlaybackProvider {
         try await withTaskCancellationHandler {
             let value = await context.value
             try Task.checkCancellation()
-            return try await ProviderHealth.shared.guarded(provider.id) {
+            let candidates = try await ProviderHealth.shared.guarded(provider.id) {
                 try await provider.candidates(for: value)
             }
+            return ProviderServerPriority.apply(candidates, providerID: provider.id)
         } onCancel: { context.cancel() }
     }
 }
@@ -326,7 +327,7 @@ final class PlaybackDiscovery {
         let meta = candidate.displayMetadata
         let cached = meta?.isDebridCached == true ? 0 : 1
         let extended = meta?.requiresExtendedPrepare == true ? 0 : 1
-        return [cached, extended]
+        return [cached, extended, ProviderServerPriority.rank(candidate)]
     }
 
     func start(context: PlaybackLookupContext, providers: [any PlaybackProvider], policy: StreamSelectionPolicy) async throws -> PlayableStream {
