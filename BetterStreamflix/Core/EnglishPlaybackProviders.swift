@@ -788,3 +788,37 @@ struct OnlyflixPlaybackProvider: ScrapedPlaybackProvider {
         return []
     }
 }
+
+// MARK: - NetPrime
+
+/// NetPrime keys everything on TMDB ids and serves a fixed set of embed
+/// APIs, so there is nothing to scrape: the server list is built directly.
+struct NetPrimePlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "netprime" }
+    var displayName: String { "NetPrime" }
+    var baseURL: URL { URL(string: "https://netprime.gd/")! }
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        guard let target = NetPrimeEmbeds.Target(context: context) else { return [] }
+        if context.request.media.kind == .series, !target.isEpisode { return [] }
+        async let primeSrc = NetPrimeEmbeds.primeSrc(target)
+        async let vidrock = NetPrimeEmbeds.vidrock(target)
+        var links = NetPrimeEmbeds.vidzee(target)
+        links += await primeSrc
+        links += await vidrock
+        links += NetPrimeEmbeds.videasy(target)
+        links += NetPrimeEmbeds.embeds(target)
+        return links.map { link in
+            HosterLink(
+                name: "NetPrime • \(link.name)",
+                url: link.url,
+                referer: link.referer,
+                audioLanguage: link.audioLanguage,
+                isDirect: link.isDirect,
+                headers: link.headers,
+                subtitles: link.subtitles,
+                resolveOverride: link.resolveOverride
+            )
+        }
+    }
+}

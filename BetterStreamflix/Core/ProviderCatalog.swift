@@ -99,6 +99,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case akwam
     case topcinema
     case onlyflix
+    case netprime
 
     // Italian
     case altadefinizione01
@@ -157,7 +158,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .serienstream, .aniworld, .filmpalast, .filmo, .hdfilme,
              .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud, .ardmediathek, .zdfmediathek, .arte:
             return .german
-        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix:
+        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime:
             return .english
         case .altadefinizione01, .guardaflix, .cb01, .animeunity, .animesaturn,
              .guardaserie, .streamingita, .animeworld:
@@ -204,6 +205,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .akwam: "Akwam"
         case .topcinema: "TopCinema"
         case .onlyflix: "Onlyflix"
+        case .netprime: "NetPrime"
         case .altadefinizione01: "Altadefinizione01"
         case .guardaflix: "GuardaFlix"
         case .cb01: "CB01"

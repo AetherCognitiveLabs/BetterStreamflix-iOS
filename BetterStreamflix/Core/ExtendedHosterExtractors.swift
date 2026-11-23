@@ -56,6 +56,9 @@ enum ExtendedHosterExtractor {
             return try await packed(url, referer: referer, providerID: "luluvdo",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#)
         }
+        if matches(["2embed"]) {
+            return try await NetPrimeEmbeds.twoEmbed(url, depth: depth)
+        }
         if matches(["uqload"]) {
             return try await packed(url, referer: referer, providerID: "uqload",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#, refererOverride: url.origin + "/")
@@ -1253,5 +1256,307 @@ private extension URL {
     func queryParam(_ name: String) -> String? {
         URLComponents(url: self, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == name })?.value
+    }
+}
+
+// MARK: - NetPrime embed APIs (Vidrock / Videasy / Vidzee / PrimeSrc / VidLink / 2Embed)
+
+/// TMDB-keyed stream APIs NetPrime exposes as its server set. API-backed
+/// servers resolve at playback time; iframe-only ones go through the resolvers.
+enum NetPrimeEmbeds {
+    struct Target: Sendable {
+        let tmdbID: Int
+        let imdbID: String?
+        let title: String
+        let year: Int?
+        let season: Int?
+        let episode: Int?
+
+        var isEpisode: Bool { season != nil && episode != nil }
+
+        init?(context: PlaybackLookupContext) {
+            guard let tmdb = context.request.media.tmdbID else { return nil }
+            tmdbID = tmdb
+            imdbID = context.request.media.imdbID
+            title = context.request.media.title
+            year = AnimeMatching.year(context.request.media.releaseDate)
+            season = context.request.episode?.seasonNumber
+            episode = context.request.episode?.number
+        }
+    }
+
+    static let browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    private static var http: HosterHTTP { HosterHTTP.shared }
+
+    // MARK: Vidrock
+
+    private static let vidrockBase = URL(string: "https://vidrock.net/")!
+
+    static func vidrock(_ target: Target) async -> [HosterLink] {
+        let plain = target.isEpisode
+            ? "\(target.tmdbID)_\(target.season ?? 1)_\(target.episode ?? 1)"
+            : "\(target.tmdbID)"
+        let key = Array("x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9".utf8)
+        guard let sealed = aesCBC(kCCEncrypt, Array(plain.utf8), key: key, iv: Array(key.prefix(16))) else { return [] }
+        let token = Data(sealed).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let headers = ["User-Agent": browserUA, "Origin": "https://vidrock.net"]
+        guard let api = URL(string: "https://vidrock.net/api/\(target.isEpisode ? "tv" : "movie")/\(token)"),
+              let root = try? await http.jsonObject(api, referer: vidrockBase, headers: headers) else { return [] }
+        return root.keys.sorted().compactMap { name in
+            guard let raw = (root[name] as? [String: Any])?["url"] as? String, !raw.isEmpty,
+                  let stream = URL(string: raw) else { return nil }
+            return HosterLink(name: "\(name) (Vidrock)", url: stream, referer: vidrockBase, resolveOverride: {
+                var file = stream
+                if name.caseInsensitiveCompare("Atlas") == .orderedSame,
+                   let qualities = try? await http.json(stream, referer: vidrockBase, headers: headers) as? [[String: Any]],
+                   let best = qualities.max(by: { ($0["resolution"] as? Int ?? 0) < ($1["resolution"] as? Int ?? 0) }),
+                   let raw = best["url"] as? String, let mp4 = URL(string: raw) {
+                    file = mp4
+                }
+                return PlaybackSource(
+                    url: file,
+                    headers: ["Referer": vidrockBase.absoluteString, "Origin": "https://vidrock.net", "User-Agent": browserUA],
+                    subtitles: [],
+                    preferredPeakBitRate: nil
+                )
+            })
+        }
+    }
+
+    // MARK: PrimeSrc
+
+    private static let primeBase = URL(string: "https://primesrc.me/")!
+
+    static func primeSrc(_ target: Target) async -> [HosterLink] {
+        var query = "tmdb=\(target.tmdbID)&type=\(target.isEpisode ? "tv" : "movie")"
+        if let season = target.season, let episode = target.episode { query += "&season=\(season)&episode=\(episode)" }
+        let headers = ["User-Agent": browserUA]
+        guard let api = URL(string: "https://primesrc.me/api/v1/s?\(query)"),
+              let root = try? await http.jsonObject(api, referer: primeBase, headers: headers) else { return [] }
+        var counts: [String: Int] = [:]
+        return (root["servers"] as? [[String: Any]] ?? []).compactMap { server in
+            guard let name = server["name"] as? String, let key = server["key"] as? String,
+                  let link = URL(string: "https://primesrc.me/api/v1/l?key=\(ProviderNetwork.encoded(key))") else { return nil }
+            let count = (counts[name] ?? 0) + 1
+            counts[name] = count
+            return HosterLink(name: "\(count > 1 ? "\(name) \(count)" : name) (PrimeSrc)", url: link, referer: primeBase, resolveOverride: {
+                let response = try await http.jsonObject(link, referer: primeBase, headers: headers)
+                guard let raw = (response["link"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      raw.lowercased().hasPrefix("http"), let embed = URL(string: raw),
+                      let host = embed.host, !host.isEmpty, host != "_" else { throw AppError.invalidResponse }
+                return try await HosterResolver(client: ProviderHTTP.shared).resolve(embed, referer: primeBase)
+            })
+        }
+    }
+
+    // MARK: Videasy
+
+    private static let videasyServers = [
+        ("Yoru", "cdn"), ("Cypher", "downloader2"), ("Breach", "m4uhd"), ("Neon", "vsrc"), ("Vyse", "hdmovie"),
+    ]
+
+    static func videasy(_ target: Target) -> [HosterLink] {
+        let referer = URL(string: "https://player.videasy.net/")!
+        return videasyServers.compactMap { name, endpoint in
+            var components = URLComponents(string: "https://api.speedracelight.com/\(endpoint)/sources-with-title")
+            var items = [
+                URLQueryItem(name: "title", value: target.title),
+                URLQueryItem(name: "mediaType", value: target.isEpisode ? "tv" : "movie"),
+                URLQueryItem(name: "year", value: target.year.map(String.init) ?? ""),
+                URLQueryItem(name: "tmdbId", value: String(target.tmdbID)),
+                URLQueryItem(name: "imdbId", value: target.imdbID ?? ""),
+            ]
+            if let season = target.season, let episode = target.episode {
+                items += [URLQueryItem(name: "episodeId", value: String(episode)), URLQueryItem(name: "seasonId", value: String(season))]
+            }
+            components?.queryItems = items
+            guard let url = components?.url else { return nil }
+            let tmdb = String(target.tmdbID)
+            return HosterLink(name: "\(name) (Videasy)", url: url, referer: referer, resolveOverride: {
+                let response = try await http.send(HosterHTTP.request(url: url, headers: ["User-Agent": browserUA]))
+                let cipher = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard response.statusCode == 200, !cipher.isEmpty, !cipher.hasPrefix("<"), !cipher.hasPrefix("{") else {
+                    throw AppError.invalidResponse
+                }
+                let decrypted = try await http.send(HosterHTTP.jsonRequest(
+                    url: URL(string: "https://enc-dec.app/api/dec-videasy")!,
+                    body: ["text": cipher, "id": tmdb]
+                ))
+                let outer = (try? JSONSerialization.jsonObject(with: decrypted.data)) as? [String: Any]
+                let inner = (outer?["result"] as? [String: Any])
+                    ?? (outer?["result"] as? String).flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? [String: Any] }
+                guard let raw = ((inner?["sources"] as? [[String: Any]])?.first?["url"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                      let stream = URL(string: raw) else { throw AppError.invalidResponse }
+                return PlaybackSource(
+                    url: stream,
+                    headers: ["Referer": referer.absoluteString, "User-Agent": browserUA],
+                    subtitles: subtitles(inner?["subtitles"], provider: "Videasy"),
+                    preferredPeakBitRate: nil
+                )
+            })
+        }
+    }
+
+    // MARK: Vidzee
+
+    private static let vidzeeServers = [
+        "Nflix", "Duke", "Glory", "Nazy", "Atlas", "Drag", "Achilles",
+        "Viet", "Velocità", "Hindi", "Bengali", "Tamil", "Telugu", "Malayalam",
+    ]
+    private static let vidzeeReferer = URL(string: "https://player.vidzee.wtf/")!
+    private static let vidzeeHeaders = [
+        "User-Agent": browserUA,
+        "Origin": "https://player.vidzee.wtf",
+        "Accept": "application/json,text/plain,*/*",
+    ]
+
+    static func vidzee(_ target: Target) -> [HosterLink] {
+        var base = "https://player.vidzee.wtf/api/server?id=\(target.tmdbID)"
+        if let season = target.season, let episode = target.episode { base += "&ss=\(season)&ep=\(episode)" }
+        return vidzeeServers.enumerated().compactMap { index, name in
+            guard let link = URL(string: "\(base)&sr=\(index)") else { return nil }
+            return HosterLink(name: "\(name) (Vidzee)", url: link, referer: vidzeeReferer, resolveOverride: {
+                if index != 0, let source = try? await vidzeeLegacy(link) { return source }
+                if let source = await vidzeeDirect(target, sr: index) { return source }
+                return try await vidzeeLegacy(link)
+            })
+        }
+    }
+
+    private static func vidzeeDirect(_ target: Target, sr: Int) async -> PlaybackSource? {
+        let defaults = target.isEpisode ? ["ipcloud", "dcloud", "tik"] : ["dcloud", "tik", "ipcloud"]
+        let preferred: String?
+        switch sr {
+        case 1: preferred = "dcloud"
+        case 2...6: preferred = "tik"
+        case 7...13: preferred = "ipcloud"
+        default: preferred = nil
+        }
+        let order = preferred.map { first in [first] + defaults.filter { $0 != first } } ?? defaults
+        let path = target.isEpisode
+            ? "tv/\(target.tmdbID)/\(target.season ?? 1)/\(target.episode ?? 1)"
+            : "movie/\(target.tmdbID)"
+        for server in order {
+            guard let url = URL(string: "https://core.vidzee.wtf/streams/\(path)?s=\(server)&e=0"),
+                  let root = try? await http.jsonObject(url, referer: vidzeeReferer, headers: vidzeeHeaders),
+                  let raw = (root["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+                  let stream = URL(string: raw) else { continue }
+            var headers = vidzeeHeaders
+            headers["Referer"] = vidzeeReferer.absoluteString
+            headers["Accept"] = nil
+            for (key, value) in root["headers"] as? [String: String] ?? [:] { headers[key] = value }
+            return PlaybackSource(
+                url: stream,
+                headers: headers,
+                subtitles: subtitles(root["tracks"] ?? root["subtitles"], provider: "Vidzee"),
+                preferredPeakBitRate: nil
+            )
+        }
+        return nil
+    }
+
+    /// Server links carry an AES-CBC link keyed by a master key that
+    /// `core.vidzee.wtf/api-key` hands out AES-GCM sealed under a static pass.
+    private static func vidzeeLegacy(_ link: URL) async throws -> PlaybackSource {
+        let keyResponse = try await http.send(HosterHTTP.request(
+            url: URL(string: "https://core.vidzee.wtf/api-key")!,
+            referer: vidzeeReferer,
+            headers: vidzeeHeaders
+        ))
+        guard let blob = ExtendedCrypto.b64Decode(keyResponse.text), blob.count > 28 else { throw AppError.invalidResponse }
+        let gcmKey = SymmetricKey(data: SHA256.hash(data: Data("4f2a9c7d1e8b3a6f0d5c2e9a7b1f4d8c".utf8)))
+        let box = try AES.GCM.SealedBox(
+            nonce: AES.GCM.Nonce(data: Data(blob[0..<12])),
+            ciphertext: Data(blob[28...]),
+            tag: Data(blob[12..<28])
+        )
+        let master = Array(try AES.GCM.open(box, using: gcmKey))
+
+        let root = try await http.jsonObject(link, referer: vidzeeReferer, headers: vidzeeHeaders)
+        guard let encrypted = (root["url"] as? [[String: Any]])?.first?["link"] as? String,
+              let wrapped = ExtendedCrypto.b64Decode(encrypted),
+              let parts = String(bytes: wrapped, encoding: .utf8)?.split(separator: ":"), parts.count >= 2,
+              let iv = ExtendedCrypto.b64Decode(String(parts[0])),
+              let cipher = ExtendedCrypto.b64Decode(String(parts[1])) else { throw AppError.invalidResponse }
+        var key = Array(master.prefix(32))
+        key += [UInt8](repeating: 0, count: 32 - key.count)
+        guard let plain = aesCBC(kCCDecrypt, cipher, key: key, iv: iv),
+              let raw = String(bytes: plain, encoding: .utf8), let stream = URL(string: raw) else { throw AppError.invalidResponse }
+        var headers = vidzeeHeaders
+        headers["Referer"] = vidzeeReferer.absoluteString
+        headers["Accept"] = nil
+        return PlaybackSource(url: stream, headers: headers, subtitles: subtitles(root["tracks"], provider: "Vidzee"), preferredPeakBitRate: nil)
+    }
+
+    // MARK: VidLink / Vidnest / 2Embed (iframe servers)
+
+    /// VidLink only reveals its playlist to a JS player, so it is handed to the
+    /// resolvers as an embed like NetPrime's Vidnest alias.
+    static func embeds(_ target: Target) -> [HosterLink] {
+        let id = target.tmdbID
+        var urls: [(String, String)]
+        if let season = target.season, let episode = target.episode {
+            urls = [
+                ("Vidnest", "https://vidnest.fun/tv/\(id)/\(season)/\(episode)"),
+                ("VidLink", "https://vidlink.pro/tv/\(id)/\(season)/\(episode)"),
+                ("2Embed", "https://www.2embed.cc/embedtv/\(id)?s=\(season)&e=\(episode)"),
+            ]
+        } else {
+            urls = [
+                ("Vidnest", "https://vidnest.fun/movie/\(id)"),
+                ("VidLink", "https://vidlink.pro/movie/\(id)"),
+                ("2Embed", "https://www.2embed.cc/embed/\(id)"),
+            ]
+        }
+        return urls.compactMap { name, raw in URL(string: raw).map { HosterLink(name: name, url: $0) } }
+    }
+
+    /// 2Embed's page lazy-loads a player iframe; `id=` players are uqloads
+    /// (streamwish) files, anything else is resolved as a regular hoster.
+    static func twoEmbed(_ url: URL, depth: Int) async throws -> PlaybackSource? {
+        let html = try await http.page(url, referer: URL(string: "https://www.2embed.cc/"), headers: ["User-Agent": browserUA])
+        guard let raw = AnimeHTML.parse(html).first({ $0.tag == "iframe" && !$0["data-src"].isEmpty })?["data-src"],
+              let frame = URL(string: raw) else { return nil }
+        if let id = AnimeHTML.captures(#"[?&]id=([^&]+)"#, in: raw).first?[1],
+           let uqloads = URL(string: "https://uqloads.xyz/e/\(id)") {
+            let origin = URL(string: "\(frame.scheme ?? "https")://\(frame.host ?? "")/")
+            return try await ExtendedHosterExtractor.resolve(uqloads, referer: origin, serverName: "streamwish", depth: depth + 1)
+        }
+        if let source = try? await ExtendedHosterExtractor.resolve(frame, referer: url, depth: depth + 1) {
+            return source
+        }
+        return try await HosterExtractor.resolve(frame, referer: url, depth: depth + 1)
+    }
+
+    // MARK: Helpers
+
+    private static func subtitles(_ value: Any?, provider: String) -> [SubtitleSource] {
+        (value as? [[String: Any]] ?? []).compactMap { track in
+            guard let raw = (track["url"] as? String) ?? (track["file"] as? String), let url = URL(string: raw) else { return nil }
+            let label = (track["lang"] as? String) ?? (track["label"] as? String) ?? "Unknown"
+            return SubtitleSource(
+                providerID: provider.lowercased(),
+                providerName: provider,
+                label: label,
+                languageCode: AnimeStreamResolver.languageCode(label),
+                url: url
+            )
+        }
+    }
+
+    private static func aesCBC(_ operation: Int, _ input: [UInt8], key: [UInt8], iv: [UInt8]) -> [UInt8]? {
+        var output = [UInt8](repeating: 0, count: input.count + kCCBlockSizeAES128)
+        let capacity = output.count
+        var moved = 0
+        let status = CCCrypt(
+            CCOperation(operation), CCAlgorithm(kCCAlgorithmAES), CCOptions(kCCOptionPKCS7Padding),
+            key, key.count, iv, input, input.count, &output, capacity, &moved
+        )
+        guard status == kCCSuccess else { return nil }
+        return Array(output.prefix(moved))
     }
 }
