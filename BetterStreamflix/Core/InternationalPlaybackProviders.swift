@@ -776,6 +776,7 @@ enum InternationalPlaybackProviders {
             MkissaPlaybackProvider(),
             LookMovie2PlaybackProvider(),
             AkwamPlaybackProvider(),
+            TopcinemaPlaybackProvider(),
         ]
     }
 

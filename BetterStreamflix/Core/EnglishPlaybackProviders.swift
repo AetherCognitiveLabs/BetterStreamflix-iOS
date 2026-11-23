@@ -661,3 +661,73 @@ struct AkwamPlaybackProvider: ScrapedPlaybackProvider {
         return nil
     }
 }
+
+// MARK: - TopCinema
+
+/// Arabic WordPress catalog. Each movie's `/watch/` page lists
+/// `li.server--item[data-id][data-server]`; POSTing those to the theme's
+/// `Ajaxat/Single/Server.php` returns the hoster iframe. Series `/watch/`
+/// links redirect to episode lists, so only movies are exposed.
+struct TopcinemaPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "topcinema" }
+    var displayName: String { "TopCinema" }
+    var baseURL: URL { URL(string: "https://topcinemaa.one/")! }
+    var audioLanguage: String { "en" }
+    var supportsSeries: Bool { false }
+
+    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        guard context.request.media.kind == .movie else { return [] }
+        let headers = ["User-Agent": Self.userAgent]
+        for query in TitleMatch.queries(for: context) {
+            guard let page = try? await html(try url("", query: ["s": query]), headers: headers) else { continue }
+            let results: [ScrapedResult] = page.all { $0.hasClass("Small--Box") }.compactMap { box in
+                guard let anchor = box.first({ $0.tag == "a" && !$0["href"].isEmpty }),
+                      let link = try? url(anchor["href"]) else { return nil }
+                let raw = anchor["title"].isEmpty ? (box.first { $0.tag == "h3" }?.text ?? "") : anchor["title"]
+                guard !raw.hasPrefix("مسلسل") else { return nil }
+                return Self.result(from: raw, url: link)
+            }
+            guard let match = results.bestMatch(for: context) else { continue }
+            let watch = match.url.appendingPathComponent("watch/")
+            let servers = try await html(watch, referer: match.url, headers: headers)
+            let ajax = try url("wp-content/themes/movies2023/Ajaxat/Single/Server.php")
+            return servers.all { $0.tag == "li" && $0.hasClass("server--item") && !$0["data-id"].isEmpty }
+                .compactMap { item -> HosterLink? in
+                    let postID = item["data-id"], index = item["data-server"]
+                    guard !index.isEmpty else { return nil }
+                    let label = item.first { $0.tag == "span" }?.text ?? "Server \(index)"
+                    let provider = self
+                    return HosterLink(
+                        name: label.trimmingCharacters(in: .whitespacesAndNewlines),
+                        url: ajax.appendingPathComponent("\(postID)-\(index)"),
+                        referer: watch,
+                        resolveOverride: {
+                            let body = try await provider.text(
+                                ajax,
+                                referer: watch,
+                                headers: ["User-Agent": Self.userAgent, "X-Requested-With": "XMLHttpRequest"],
+                                form: ["id": postID, "i": index]
+                            )
+                            guard let src = AnimeHTML.parse(body).first({ $0.tag == "iframe" })?["src"],
+                                  let embed = ProviderNetwork.absolute(src, relativeTo: provider.baseURL) else {
+                                throw AppError.invalidResponse
+                            }
+                            return try await HosterResolver(client: provider.client).resolve(embed, referer: watch)
+                        }
+                    )
+                }
+        }
+        return []
+    }
+
+    /// Card titles read `فيلم <Title> <Year> مترجم اون لاين`; keep the Latin title.
+    private static func result(from raw: String, url: URL) -> ScrapedResult {
+        let decoded = raw.replacingOccurrences(of: "&#8211;", with: "-")
+        let year = AnimeHTML.captures(#"\b((?:19|20)\d{2})\b"#, in: decoded).last.flatMap { Int($0[1]) }
+        var title = decoded.unicodeScalars.filter { !(0x0600...0x06FF).contains($0.value) }.map(String.init).joined()
+        if let year { title = title.replacingOccurrences(of: String(year), with: "") }
+        return ScrapedResult(title: title.trimmingCharacters(in: .whitespacesAndNewlines), year: year, kind: .movie, url: url)
+    }
+}
