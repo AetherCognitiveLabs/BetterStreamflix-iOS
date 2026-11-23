@@ -90,6 +90,7 @@
 		A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */; };
 		A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */; };
 		A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220004 /* MoreView.swift */; };
+		CDFB4CD7BE8899DB0E9D17A2 /* LiveTVView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE14C89AE62D17D95BA0E93 /* LiveTVView.swift */; };
 		07F8B9E4D432C62FCE2A4260 /* LivePlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D39EA2990020C9E058030F /* LivePlayerView.swift */; };
 		A1F82C4E9B7D4011AA220015 /* WatchlistToastStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */; };
 		95C4E4D6C05917998AC040F7 /* FirstLaunchSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */; };
@@ -197,6 +198,7 @@
 		A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistFeedback.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonProfileView.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220004 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
+		DFE14C89AE62D17D95BA0E93 /* LiveTVView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTVView.swift; sourceTree = "<group>"; };
 		83D39EA2990020C9E058030F /* LivePlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePlayerView.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistToastStore.swift; sourceTree = "<group>"; };
 		A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchSetupView.swift; sourceTree = "<group>"; };
@@ -338,6 +340,7 @@
 				A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */,
 				A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */,
 				A1F82C4E9B7D4011AA220004 /* MoreView.swift */,
+				DFE14C89AE62D17D95BA0E93 /* LiveTVView.swift */,
 				83D39EA2990020C9E058030F /* LivePlayerView.swift */,
 				A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */,
 				A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */,
@@ -485,6 +488,7 @@
 				A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */,
 				A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */,
 				A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */,
+				CDFB4CD7BE8899DB0E9D17A2 /* LiveTVView.swift in Sources */,
 				07F8B9E4D432C62FCE2A4260 /* LivePlayerView.swift in Sources */,
 				A1F82C4E9B7D4011AA220015 /* WatchlistToastStore.swift in Sources */,
 				95C4E4D6C05917998AC040F7 /* FirstLaunchSetupView.swift in Sources */,

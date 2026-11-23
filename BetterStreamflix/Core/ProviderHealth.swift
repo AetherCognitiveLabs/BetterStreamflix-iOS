@@ -64,10 +64,10 @@ actor ProviderHealth {
     }
 
     /// Runs a provider lookup through the breaker; cancellations don't count.
-    nonisolated func guarded(
+    nonisolated func guarded<Element: Sendable>(
         _ providerID: String,
-        _ operation: () async throws -> [PlaybackCandidate]
-    ) async throws -> [PlaybackCandidate] {
+        _ operation: () async throws -> [Element]
+    ) async throws -> [Element] {
         guard await isAvailable(providerID) else { return [] }
         do {
             let result = try await operation()

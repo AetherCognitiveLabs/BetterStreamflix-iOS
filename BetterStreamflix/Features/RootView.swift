@@ -2,10 +2,12 @@ import SwiftUI
 
 struct RootView: View {
     private enum Tab: Hashable {
-        case home, movies, series, library, more
+        case home, movies, series, library, live, more
     }
 
     @EnvironmentObject private var environment: AppEnvironment
+    /// Live TV lives under More; set `liveTV.showTab` to true to also show it as a tab.
+    @AppStorage("liveTV.showTab") private var showsLiveTab = false
     @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -179,6 +181,12 @@ struct RootView: View {
                 .environment(\.titleTransitionSelection, libraryTitleTransitionSelection)
                 .tabItem { Label("Library", systemImage: "bookmark.fill") }
                 .tag(Tab.library)
+
+            if showsLiveTab {
+                NavigationStack { LiveTVView() }
+                    .tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
+                    .tag(Tab.live)
+            }
 
             MoreView(onOpenSearch: { isSearchPresented = true })
                 .environment(\.titleTransitionNamespace, moreTitleTransitionNamespace)

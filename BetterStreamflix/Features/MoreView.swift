@@ -52,6 +52,14 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
+                            title: "Live TV",
+                            subtitle: "Pluto TV, Vavoo, sports & IPTV channels",
+                            systemImage: "dot.radiowaves.left.and.right"
+                        ) {
+                            path.append(MoreRoute.liveTV)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
                             title: "Stremio",
                             subtitle: addonHubSubtitle,
                             systemImage: "puzzlepiece.extension.fill"
@@ -176,6 +184,8 @@ struct MoreView: View {
                     StremioAddonsSettingsView()
                 case .stremioDebrid:
                     StremioDebridSettingsView()
+                case .liveTV:
+                    LiveTVView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -343,7 +353,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings, stremioDebrid
+    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV
 }
 
 private extension MoreView {
