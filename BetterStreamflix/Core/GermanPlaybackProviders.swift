@@ -1823,6 +1823,78 @@ struct ZdfMediathekPlaybackProvider: GermanPlaybackProvider {
     }
 }
 
+/// ARTE emac API: `pages/SEARCH` lists `arte://program/<id>` and
+/// `arte://collection/<id>` deeplinks; the player config hands out HLS URLs.
+struct ArtePlaybackProvider: GermanPlaybackProvider {
+    var id: String { "arte" }
+    var displayName: String { "ARTE" }
+    var baseURL: URL { Self.base }
+
+    private static let base = URL(string: "https://www.arte.tv/")!
+    private static let emac = "https://api.arte.tv/api/emac/v4/de/web"
+    private static let player = "https://api.arte.tv/api/player/v2/config/de"
+
+    func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
+        let headers = ["User-Agent": PublicBroadcast.userAgent]
+        let isSeries = context.request.media.kind == .series
+        for query in GermanScrape.queries(for: context) {
+            try Task.checkCancellation()
+            guard let search = URL(string: "\(Self.emac)/pages/SEARCH?query=\(ProviderNetwork.encoded(query))"),
+                  let root = try? await GermanScrape.client.jsonObject(search, referer: baseURL, headers: headers) else { continue }
+            let items = Self.items(in: root).filter { GermanScrape.matches($0["title"] as? String ?? "", context: context) }
+            var programs: [String] = []
+            for item in items {
+                let link = (item["deeplink"] as? String ?? "").replacingOccurrences(of: "arte://", with: "")
+                if !isSeries, link.hasPrefix("program/") {
+                    programs.append(String(link.dropFirst("program/".count)))
+                } else if isSeries, link.hasPrefix("collection/"),
+                          let episode = context.request.episode,
+                          let collectionURL = URL(string: "\(Self.emac)/collections/\(link.dropFirst("collection/".count))"),
+                          let collection = try? await GermanScrape.client.jsonObject(collectionURL, referer: baseURL, headers: headers) {
+                    let episodes = Self.items(in: collection).compactMap { entry -> String? in
+                        let deeplink = (entry["deeplink"] as? String ?? "").replacingOccurrences(of: "arte://", with: "")
+                        return deeplink.hasPrefix("program/") ? String(deeplink.dropFirst("program/".count)) : nil
+                    }
+                    let index = (context.continuousEpisodeNumber ?? episode.number) - 1
+                    if episodes.indices.contains(index) { programs.append(episodes[index]) }
+                }
+            }
+            for program in programs.prefix(2) {
+                let found = try await streams(for: program)
+                if !found.isEmpty { return found }
+            }
+        }
+        return []
+    }
+
+    private func streams(for program: String) async throws -> [GermanHoster] {
+        guard let configURL = URL(string: "\(Self.player)/\(program)") else { return [] }
+        let config = try await GermanScrape.client.jsonObject(configURL, referer: baseURL, headers: ["User-Agent": PublicBroadcast.userAgent])
+        guard let attributes = (config["data"] as? [String: Any])?["attributes"] as? [String: Any] else { return [] }
+        let subtitles: [SubtitleSource] = (attributes["subtitles"] as? [[String: Any]] ?? []).compactMap { entry in
+            guard let raw = entry["url"] as? String, let url = URL(string: raw) else { return nil }
+            return PublicBroadcast.subtitle(url, label: entry["code"] as? String ?? "sub", provider: "ARTE")
+        }
+        return (attributes["streams"] as? [[String: Any]] ?? []).compactMap { stream in
+            guard let raw = stream["url"] as? String, let url = URL(string: raw) else { return nil }
+            let quality = ((stream["mainQuality"] as? [String: Any])?["label"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "auto"
+            let version = (stream["versionLabel"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return PublicBroadcast.hoster(
+                name: ["ARTE", version, quality].compactMap { $0 }.joined(separator: " "),
+                url: url,
+                referer: baseURL,
+                subtitles: { subtitles }
+            )
+        }
+    }
+
+    private static func items(in root: [String: Any]) -> [[String: Any]] {
+        (root["zones"] as? [[String: Any]] ?? []).flatMap {
+            (($0["content"] as? [String: Any])?["data"] as? [[String: Any]]) ?? []
+        }
+    }
+}
+
 // MARK: - Registry
 
 
@@ -1841,6 +1913,7 @@ enum GermanPlaybackProviders {
             StreamcloudPlaybackProvider(),
             ArdMediathekPlaybackProvider(),
             ZdfMediathekPlaybackProvider(),
+            ArtePlaybackProvider(),
         ]
     }
 }
