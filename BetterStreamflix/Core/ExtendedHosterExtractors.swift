@@ -23,125 +23,125 @@ enum ExtendedHosterExtractor {
         let host = url.hostName?.lowercased() ?? ""
         let hint = serverName.lowercased()
 
-        func is(_ needles: [String]) -> Bool {
+        func matches(_ needles: [String]) -> Bool {
             needles.contains { host.contains($0) || hint.contains($0) }
         }
 
-        if is(["filemoon", "bf0skv", "bysejikuar", "bysezoxexe", "bysebuho",
+        if matches(["filemoon", "bf0skv", "bysejikuar", "bysezoxexe", "bysebuho",
                "bysekoze", "bysesayeveum", "moflix-stream"]) {
             return try await filemoon(url)
         }
-        if is(["supervideo"]) {
+        if matches(["supervideo"]) {
             return try await packed(url, referer: referer, providerID: "supervideo",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#, refererOverride: "https://supervideo.cc")
         }
-        if is(["dropload", "dr0pstream"]) {
+        if matches(["dropload", "dr0pstream"]) {
             return try await packed(url, referer: referer, providerID: "dropload",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#, useFinalURLReferer: true)
         }
-        if is(["fsvid"]) {
+        if matches(["fsvid"]) {
             return try await packed(url, referer: referer, providerID: "fsvid",
                                     filePattern: #"src\s*:\s*["']([^"']+)["']"#)
         }
-        if is(["streamhub"]) {
+        if matches(["streamhub"]) {
             let embed = URL(string: url.absoluteString.replacingOccurrences(of: "/d/", with: "/e/")) ?? url
             return try await packed(embed, referer: referer ?? embed, providerID: "streamhub",
                                     filePattern: #"src\s*:\s*["']([^"']+)["']"#)
         }
-        if is(["streamruby"]) {
+        if matches(["streamruby"]) {
             return try await packed(url, referer: referer, providerID: "streamruby",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#)
         }
-        if is(["luluvdo", "lulustream", "luluvdoo"]) {
+        if matches(["luluvdo", "lulustream", "luluvdoo"]) {
             return try await packed(url, referer: referer, providerID: "luluvdo",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#)
         }
-        if is(["uqload"]) {
+        if matches(["uqload"]) {
             return try await packed(url, referer: referer, providerID: "uqload",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#, refererOverride: url.origin + "/")
         }
-        if is(["ups2up", "up4stream", "up4fun"]) {
+        if matches(["ups2up", "up4stream", "up4fun"]) {
             return try await packed(url, referer: referer, providerID: "ustr",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#)
         }
-        if is(["vidzy"]) {
+        if matches(["vidzy"]) {
             return try await packed(url, referer: referer, providerID: "vidzy",
                                     filePattern: #"src\s*:\s*["']([^"']+)["']"#, loadTracksSubs: true)
         }
-        if is(streamWishHosts) || hint.contains("streamwish") || hint.contains("wish") {
+        if matches(streamWishHosts) || hint.contains("streamwish") || hint.contains("wish") {
             return try await streamWish(url, referer: referer)
         }
-        if is(["vidmoly"]) {
+        if matches(["vidmoly"]) {
             return try await vidmoly(url)
         }
-        if is(["vtbe", "vtube"]) {
+        if matches(["vtbe", "vtube"]) {
             return try await vtube(url, referer: referer)
         }
-        if is(["bigwarp"]) {
+        if matches(["bigwarp"]) {
             return try await jwPlayer(url, referer: referer, refererOverride: "https://bigwarp.cc/")
         }
-        if is(["oneupload", "tipfly"]) {
+        if matches(["oneupload", "tipfly"]) {
             return try await jwPlayer(url, referer: referer, refererOverride: url.origin + "/")
         }
-        if is(["yourupload", "yucache"]) {
+        if matches(["yourupload", "yucache"]) {
             return try await jwPlayer(url, referer: referer, refererOverride: "https://www.yourupload.com")
         }
-        if is(["savefiles"]) {
+        if matches(["savefiles"]) {
             return try await savefiles(url)
         }
-        if is(["gupload"]) {
+        if matches(["gupload"]) {
             return try await gupload(url, referer: referer)
         }
-        if is(["ridoo"]) {
+        if matches(["ridoo"]) {
             return try await ridoo(url, referer: referer)
         }
-        if is(["vidply"]) {
+        if matches(["vidply"]) {
             return try await vidply(url)
         }
-        if is(["dhtpre", "filelions", "vidhide", "vidhidepro", "moflix-upns"]) {
+        if matches(["dhtpre", "filelions", "vidhide", "vidhidepro", "moflix-upns"]) {
             return try await vidhide(url, referer: referer)
         }
-        if is(["loadx"]) {
+        if matches(["loadx"]) {
             return try await loadx(url)
         }
-        if is(["strmup", "streamup"]) {
+        if matches(["strmup", "streamup"]) {
             return try await streamUp(url)
         }
-        if is(["pluspomla"]) {
+        if matches(["pluspomla"]) {
             return try await plusPomla(url, referer: referer)
         }
-        if is(["dailymotion", "dmcdn", "dai.ly"]) {
+        if matches(["dailymotion", "dmcdn", "dai.ly"]) {
             return try await dailymotion(url, referer: referer)
         }
-        if is(["ok.ru", "odnoklassniki", "mycdn.me"]) {
+        if matches(["ok.ru", "odnoklassniki", "mycdn.me"]) {
             return try await okru(url, referer: referer)
         }
-        if is(["veev", "kinoger.pw", "poophq", "doods"]) {
+        if matches(["veev", "kinoger.pw", "poophq", "doods"]) {
             return try await veev(url, referer: referer)
         }
-        if is(["rpmvid", "cubeembed", "upns", "loadm.cam", "playerp2p",
+        if matches(["rpmvid", "cubeembed", "upns", "loadm.cam", "playerp2p",
                "rpmstream", "strp2p", "rpmplay", "flix2day", "primevid", "anibum", "flemmix", "moflix."]) {
             return try await rpmvid(url)
         }
-        if is(["magasavor"]) {
+        if matches(["magasavor"]) {
             return try await magasavor(url, referer: referer)
         }
-        if is(["vidguard", "vguard", "vembed.net", "vgtembed", "listeamed", "bembed", "vid-guard"]) {
+        if matches(["vidguard", "vguard", "vembed.net", "vgtembed", "listeamed", "bembed", "vid-guard"]) {
             return try await vidguard(url, referer: referer)
         }
-        if is(["closeload", "ridorapid"]) {
+        if matches(["closeload", "ridorapid"]) {
             return try await closeload(url, referer: referer)
         }
-        if is(["chillx", "jeansaispasplus"]) {
+        if matches(["chillx", "jeansaispasplus"]) {
             return try await chillx(url, referer: referer)
         }
-        if is(["upzone"]) {
+        if matches(["upzone"]) {
             return try await upzone(url, referer: referer, depth: depth)
         }
-        if is(["nupload", "nupupload"]) {
+        if matches(["nupload", "nupupload"]) {
             return try await nuupload(url, referer: referer, depth: depth)
         }
-        if is(["megaup", "goodstream"]) {
+        if matches(["megaup", "goodstream"]) {
             return try await jwPlayer(url, referer: referer, refererOverride: url.origin + "/")
         }
         return nil
@@ -934,8 +934,10 @@ enum ExtendedHosterExtractor {
         for raw in delegated {
             guard let next = ProviderNetwork.absolute(raw, relativeTo: url), next != url,
                   !(next.hostName ?? "").contains("upzone") else { continue }
-            if let source = try? await ExtendedHosterExtractor.resolve(next, referer: url, depth: depth + 1) ??
-                              (try? await HosterExtractor.resolve(next, referer: url, depth: depth + 1)) {
+            if let source = try? await ExtendedHosterExtractor.resolve(next, referer: url, depth: depth + 1) {
+                return source
+            }
+            if let source = try? await HosterExtractor.resolve(next, referer: url, depth: depth + 1) {
                 return source
             }
         }
@@ -965,8 +967,10 @@ enum ExtendedHosterExtractor {
             guard let next = ProviderNetwork.absolute(raw, relativeTo: url), next != url else { continue }
             let host = next.hostName?.lowercased() ?? ""
             if host.contains("nupload") || host.contains("nupupload") { continue }
-            if let source = try? await ExtendedHosterExtractor.resolve(next, referer: url, depth: depth + 1) ??
-                              (try? await HosterExtractor.resolve(next, referer: url, depth: depth + 1)) {
+            if let source = try? await ExtendedHosterExtractor.resolve(next, referer: url, depth: depth + 1) {
+                return source
+            }
+            if let source = try? await HosterExtractor.resolve(next, referer: url, depth: depth + 1) {
                 return source
             }
         }
@@ -1172,7 +1176,7 @@ enum ExtendedCrypto {
                             keyBuffer.baseAddress, key.count,
                             ivBuffer.baseAddress,
                             cipherBuffer.baseAddress, ciphertext.count,
-                            outBuffer.baseAddress, out.count,
+                            outBuffer.baseAddress, outBuffer.count,
                             &outLength
                         )
                     }
