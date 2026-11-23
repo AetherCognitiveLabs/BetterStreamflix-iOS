@@ -462,6 +462,11 @@ struct HosterResolver: Sendable {
                 return source
             }
         }
+        // Dedicated extractors ported for the wider hoster ecosystem
+        // (Filemoon, StreamWish, Vidmoly, ...); unmatched hosts fall through.
+        if let extended = try? await ExtendedHosterExtractor.resolve(url, referer: referer, depth: depth) {
+            return extended
+        }
         return try await generic(url, referer: referer, depth: depth)
     }
 

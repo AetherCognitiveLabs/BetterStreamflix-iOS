@@ -456,6 +456,11 @@ enum HosterExtractor {
         if host.contains("vidsonic") || hint.contains("vidsonic") {
             return try await vidsonic(url)
         }
+        if let extended = try await ExtendedHosterExtractor.resolve(
+            url, referer: referer, serverName: serverName, depth: depth
+        ) {
+            return extended
+        }
         return try await generic(url, referer: referer, depth: depth)
     }
 
