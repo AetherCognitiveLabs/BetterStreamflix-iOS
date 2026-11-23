@@ -21,6 +21,7 @@
 		DADB97AC880BDA6EC842727E /* EnglishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */; };
 		7C2EDBE0EB326AE07E8CDC83 /* FrenchPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */; };
 		F4351AA8A81AEAF523003237 /* GermanPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */; };
+		E7A1C3D5F7091B2D3F5A7C9E /* ExtendedHosterExtractors.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B2D4E6A81A2C3E4A6B8D0F /* ExtendedHosterExtractors.swift */; };
 		D11A4EFD8BEB43E81744EC65 /* HosterExtractors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */; };
 		AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */; };
 		509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */; };
@@ -117,6 +118,7 @@
 		BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishPlaybackProviders.swift; sourceTree = "<group>"; };
 		6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrenchPlaybackProviders.swift; sourceTree = "<group>"; };
 		C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GermanPlaybackProviders.swift; sourceTree = "<group>"; };
+		F8B2D4E6A81A2C3E4A6B8D0F /* ExtendedHosterExtractors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendedHosterExtractors.swift; sourceTree = "<group>"; };
 		2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HosterExtractors.swift; sourceTree = "<group>"; };
 		6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternationalPlaybackProviders.swift; sourceTree = "<group>"; };
 		2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItalianPlaybackProviders.swift; sourceTree = "<group>"; };
@@ -226,6 +228,7 @@
 				BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */,
 				6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */,
 				C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */,
+				F8B2D4E6A81A2C3E4A6B8D0F /* ExtendedHosterExtractors.swift */,
 				2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */,
 				6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */,
 				2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */,
@@ -427,6 +430,7 @@
 				DADB97AC880BDA6EC842727E /* EnglishPlaybackProviders.swift in Sources */,
 				7C2EDBE0EB326AE07E8CDC83 /* FrenchPlaybackProviders.swift in Sources */,
 				F4351AA8A81AEAF523003237 /* GermanPlaybackProviders.swift in Sources */,
+				E7A1C3D5F7091B2D3F5A7C9E /* ExtendedHosterExtractors.swift in Sources */,
 				D11A4EFD8BEB43E81744EC65 /* HosterExtractors.swift in Sources */,
 				AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */,
 				509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */,
