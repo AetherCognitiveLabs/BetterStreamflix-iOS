@@ -780,6 +780,7 @@ enum InternationalPlaybackProviders {
             OnlyflixPlaybackProvider(),
             NetPrimePlaybackProvider(),
             MovyPlaybackProvider(),
+            Shahid4uPlaybackProvider(),
         ]
     }
 

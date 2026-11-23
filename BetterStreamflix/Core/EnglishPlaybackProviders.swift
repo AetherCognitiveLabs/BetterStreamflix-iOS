@@ -981,3 +981,110 @@ enum MovyCipher {
         return String(bytes: output.dropFirst(4), encoding: .utf8)
     }
 }
+
+// MARK: - Shahid4u
+
+/// Arabic catalog on rotating domains (shahidd4u.day redirects onward) behind
+/// Cloudflare. Pages carry decoy `/m/{hash}` players in a `scraper-content`
+/// trap; only external, non-decoy embeds on the watch page are real servers.
+struct Shahid4uPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "shahid4u" }
+    var displayName: String { "Shahid4u" }
+    var baseURL: URL { URL(string: "https://shahidd4u.day/")! }
+    var audioLanguage: String { "ar" }
+
+    private static let realEmbed = #"https?://[^"'\s]*(embed|player|voe|dood|mixdrop|upstream|vidtube|uqload|filemoon|streamwish|ok\.ru|dailymotion|vidmoly|listeamed)[^"'\s]*"#
+
+    private static func usable(_ html: String) -> Bool {
+        let decoyOnly = html.contains("scraper-content") && AnimeHTML.captures(realEmbed, in: html).isEmpty
+        return !decoyOnly && html.count > 5_000
+    }
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let wantsEpisode = context.request.episode != nil
+        for query in TitleMatch.queries(for: context) {
+            try Task.checkCancellation()
+            guard let searchURL = URL(string: "\(baseURL.absoluteString)?s=\(ProviderNetwork.encoded(query))"),
+                  let response = try? await CloudflareResolver.get(searchURL, referer: baseURL, isUsable: Self.usable)
+            else { continue }
+            let site = response.url
+            let cards = Self.cards(in: response.text, base: site, episodes: wantsEpisode)
+            let match = cards.first { card in
+                guard TitleMatch.matches(Self.cleanTitle(card.title), year: card.year, context: context) else { return false }
+                guard let episode = context.request.episode else { return true }
+                return Self.episodeNumber(in: card.title + " " + card.url.absoluteString) == context.continuousEpisodeNumber
+                    || Self.episodeNumber(in: card.title + " " + card.url.absoluteString) == episode.number
+            }
+            guard let detail = match?.url else { continue }
+            let embeds = try await Self.embeds(for: detail)
+            if !embeds.isEmpty {
+                return embeds.enumerated().map { index, embed in
+                    HosterLink(name: "Shahid4u \(index + 1)", url: embed, referer: detail, audioLanguage: "ar")
+                }
+            }
+        }
+        return []
+    }
+
+    private static func cards(in html: String, base: URL, episodes: Bool) -> [(url: URL, title: String, year: Int?)] {
+        var seen: Set<String> = []
+        var result: [(url: URL, title: String, year: Int?)] = []
+        for match in AnimeHTML.captures(#"<a([^>]*)>([\s\S]*?)</a>"#, in: html) {
+            guard let href = AnimeHTML.captures(#"href="([^"]+)""#, in: match[1]).first?[1],
+                  let url = ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities(href), relativeTo: base) else { continue }
+            let path = url.path.removingPercentEncoding ?? url.path
+            guard path.contains(episodes ? "/episode/" : "/film/"), seen.insert(url.absoluteString).inserted else { continue }
+            let titleAttr = AnimeHTML.captures(#"title="([^"]+)""#, in: match[1]).first?[1]
+            let alt = AnimeHTML.captures(#"alt="([^"]+)""#, in: match[2]).first?[1]
+            let text = match[2].replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+            let slug = path.split(separator: "/").last.map { $0.replacingOccurrences(of: "-", with: " ") }
+            let title = [titleAttr, alt, text, slug].compactMap { $0 }
+                .map { HTMLPayloadParser.decodeEntities($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty } ?? ""
+            guard !title.isEmpty else { continue }
+            result.append((url: url, title: title, year: AnimeMatching.year(title)))
+        }
+        return result
+    }
+
+    /// Drops the Arabic "film"/"series"/"episode"/"translated" labels and the year.
+    private static func cleanTitle(_ title: String) -> String {
+        title
+            .replacingOccurrences(of: #"(فيلم|مسلسل|مترجم|مترجمة|اون لاين|الحلقة\s*\d+|الموسم\s*\d+|\(?\b(19|20)\d{2}\b\)?)"#,
+                                  with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func episodeNumber(in text: String) -> Int? {
+        let decoded = text.removingPercentEncoding ?? text
+        return AnimeHTML.captures(#"الحلقة[-\s]*(\d+)"#, in: decoded).first.flatMap { Int($0[1]) }
+    }
+
+    /// Detail pages link the real player at /watch/{slug}.
+    private static func embeds(for detail: URL) async throws -> [URL] {
+        let detailHTML = try await CloudflareResolver.page(detail, referer: detail, isUsable: usable)
+        var watch = AnimeHTML.captures(#"href="([^"]*/watch/[^"]*)""#, in: detailHTML).first
+            .flatMap { ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities($0[1]), relativeTo: detail) }
+        if watch == nil, let slug = detail.path.split(separator: "/").last {
+            watch = URL(string: "/watch/\(slug)", relativeTo: detail)?.absoluteURL
+        }
+        var html = detailHTML
+        if let watch, watch != detail, let page = try? await CloudflareResolver.page(watch, referer: detail, isUsable: usable) {
+            html = page
+        }
+        let ownHost = detail.host ?? ""
+        var seen: Set<String> = []
+        var result: [URL] = []
+        let pattern = #"(?:<iframe[^>]*\ssrc|data-url|data-embed|data-src)="(https?://[^"]+)""#
+        for match in AnimeHTML.captures(pattern, in: html) {
+            let raw = HTMLPayloadParser.decodeEntities(match[1])
+            let lower = raw.lowercased()
+            guard !lower.contains("/m/"), !lower.contains("youtube"), !lower.contains("4u."),
+                  ![".jpg", ".png", ".webp"].contains(where: lower.hasSuffix),
+                  let url = URL(string: raw), url.host != ownHost,
+                  seen.insert(raw).inserted else { continue }
+            result.append(url)
+        }
+        return result
+    }
+}
