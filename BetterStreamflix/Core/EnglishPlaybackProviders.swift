@@ -573,3 +573,91 @@ struct LookMovie2PlaybackProvider: ScrapedPlaybackProvider {
         return (streams, subtitles)
     }
 }
+
+// MARK: - Akwam
+
+/// Arabic catalog. Movie and episode pages list per-quality
+/// `/download/{file}/{content}/{slug}` pages whose body links the direct MP4
+/// on downet.net, so no hoster extractor is involved.
+struct AkwamPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "akwam" }
+    var displayName: String { "Akwam" }
+    var baseURL: URL { URL(string: "https://akwam.ss/")! }
+    var audioLanguage: String { "ar" }
+
+    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let headers = ["User-Agent": Self.userAgent]
+        let isSeries = context.request.media.kind == .series
+        let section = isSeries ? "/series/" : "/movie/"
+        for query in TitleMatch.queries(for: context) {
+            let search = try url("search", query: ["q": query])
+            guard let page = try? await html(search, headers: headers) else { continue }
+            let results: [ScrapedResult] = page.all { $0.hasClass("entry-box") }.compactMap { box in
+                guard let anchor = box.first(where: { $0.tag == "a" && $0["href"].contains(section) }),
+                      let link = try? url(anchor["href"]) else { return nil }
+                let title = box.first { $0.hasClass("entry-title") }?.text ?? anchor["title"]
+                let year = AnimeHTML.captures(#"\b((?:19|20)\d{2})\b"#, in: box.text).first.flatMap { Int($0[1]) }
+                return ScrapedResult(
+                    title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    year: year,
+                    kind: isSeries ? .series : .movie,
+                    url: link
+                )
+            }
+            guard let match = results.bestMatch(for: context) else { continue }
+            var target = match.url
+            if isSeries {
+                guard let episode = context.request.episode,
+                      let show = try? await html(match.url, headers: headers),
+                      let found = Self.episodeURL(in: show, number: episode.number, resolve: { try? url($0) }) else { continue }
+                target = found
+            }
+            let detail = try await html(target, headers: headers)
+            return downloadLinks(in: detail, page: target)
+        }
+        return []
+    }
+
+    private func downloadLinks(in page: AnimeHTML, page pageURL: URL) -> [HosterLink] {
+        var seen = Set<String>()
+        let anchors = page.all { $0.tag == "a" && $0["href"].contains("/download/") }
+        return anchors.enumerated().compactMap { index, anchor in
+            guard let download = try? url(anchor["href"]), seen.insert(download.absoluteString).inserted else { return nil }
+            let provider = self
+            return HosterLink(
+                name: "Akwam \(index + 1)",
+                url: download,
+                referer: pageURL,
+                isDirect: true,
+                headers: ["User-Agent": Self.userAgent, "Referer": download.absoluteString],
+                resolveOverride: {
+                    let body = try await provider.text(download, referer: pageURL, headers: ["User-Agent": Self.userAgent])
+                    guard let raw = AnimeHTML.captures(#"https?://[^"'\s<>]+\.(?:mp4|mkv)"#, in: body).first?[0],
+                          let file = URL(string: raw) else { throw AppError.invalidResponse }
+                    return PlaybackSource(
+                        url: file,
+                        headers: ["User-Agent": Self.userAgent, "Referer": download.absoluteString],
+                        subtitles: [],
+                        preferredPeakBitRate: nil
+                    )
+                }
+            )
+        }
+    }
+
+    private static func episodeURL(in page: AnimeHTML, number: Int, resolve: (String) -> URL?) -> URL? {
+        let anchors = page.all { $0.tag == "a" && $0["href"].contains("/episode/") }
+        var ordered: [URL] = []
+        for anchor in anchors {
+            guard let link = resolve(anchor["href"]), !ordered.contains(link) else { continue }
+            let decoded = link.absoluteString.removingPercentEncoding ?? link.absoluteString
+            if let match = AnimeHTML.captures(#"الحلقة-(\d+)"#, in: decoded).first, Int(match[1]) == number {
+                return link
+            }
+            ordered.append(link)
+        }
+        return nil
+    }
+}
