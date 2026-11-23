@@ -1411,6 +1411,108 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
     }
 }
 
+// MARK: - StreamCloud
+
+/// Datalife Engine site whose detail pages embed devideosrc.co keyed by IMDb
+/// id; the embed page's token unlocks `POST /api/embed-links`, which returns
+/// the standard hoster embed set (dropload, doodstream, mixdrop, voe,
+/// supervideo, ...). Ported from StreamcloudProvider.kt.
+struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
+    var id: String { "streamcloud" }
+    var displayName: String { "StreamCloud" }
+    var baseURL: URL { Self.base }
+
+    private static let base = URL(string: "https://streamcloud.date/")!
+    private static let devideosrc = "https://devideosrc.co"
+    private static let ua = HTTPClient.desktopUserAgent
+
+    func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
+        let kind = context.request.media.kind == .series ? "tv" : "movie"
+        if let imdb = context.request.media.imdbID, imdb.hasPrefix("tt") {
+            let direct = try await embedSources(kind: kind, imdb: imdb, detailURL: baseURL)
+            if !direct.isEmpty { return direct }
+        }
+        for query in GermanScrape.queries(for: context) {
+            try Task.checkCancellation()
+            guard let searchURL = GermanScrape.url(baseURL, "index.php", query: [
+                "do": "search",
+                "subaction": "search",
+                "search_start": "1",
+                "full_search": "0",
+                "result_from": "1",
+                "story": query,
+            ]) else { continue }
+            guard let html = try? await GermanScrape.client.page(searchURL, referer: baseURL) else { continue }
+            let candidates = Self.itemCandidates(in: html)
+            guard let detail = GermanScrape.bestPage(
+                from: candidates,
+                context: context,
+                preferSeason: context.request.episode?.seasonNumber
+            ) else { continue }
+            let detailHTML = try await GermanScrape.client.page(detail, referer: baseURL)
+            guard let ref = Self.embedRef(in: detailHTML) else { continue }
+            let found = try await embedSources(kind: ref.kind, imdb: ref.imdb, detailURL: detail)
+            if !found.isEmpty { return found }
+        }
+        return []
+    }
+
+    /// `.item` blocks link `href` plus the anchor title attribute or text.
+    private static func itemCandidates(in html: String) -> [(url: URL, title: String, year: Int?)] {
+        var seen: Set<String> = []
+        var result: [(url: URL, title: String, year: Int?)] = []
+        for match in AnimeHTML.captures(#"<a([^>]*)>([\s\S]*?)</a>"#, in: html) {
+            let attrs = match[1], inner = match[2]
+            guard let href = AnimeHTML.captures(#"href="([^"]+)""#, in: attrs).first?[1],
+                  href.contains(".html") else { continue }
+            let titleAttr = AnimeHTML.captures(#"title="([^"]+)""#, in: attrs).first?[1]
+            let text = HTMLPayloadParser.decodeEntities(
+                inner.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = (titleAttr?.isEmpty == false ? titleAttr! : text)
+            guard !title.isEmpty, seen.insert(href).inserted,
+                  let url = ProviderNetwork.absolute(href, relativeTo: base) else { continue }
+            result.append((url: url, title: title, year: nil))
+        }
+        return result
+    }
+
+    /// `devideosrc.co/(movie|tv)/<imdb>` iframe ref from a detail page.
+    private static func embedRef(in html: String) -> (kind: String, imdb: String)? {
+        guard let match = AnimeHTML.captures(
+            #"devideosrc\.co/(movie|tv|embed/movie)/([a-z]{2}\d+)"#, in: html
+        ).first else { return nil }
+        return (kind: match[1].contains("tv") ? "tv" : "movie", imdb: match[2])
+    }
+
+    private func embedSources(kind: String, imdb: String, detailURL: URL) async throws -> [GermanHoster] {
+        guard let embedURL = URL(string: "\(Self.devideosrc)/\(kind)/\(imdb)") else { return [] }
+        let embedPage = try await GermanScrape.client.page(embedURL, referer: detailURL)
+        guard let token = AnimeHTML.captures(#"token:\s*"([^"]+)""#, in: embedPage).first?[1] else { return [] }
+        let apiType = AnimeHTML.captures(#"type:\s*'(\w+)'"#, in: embedPage).first?[1] ?? kind
+        guard let api = URL(string: "\(Self.devideosrc)/api/embed-links") else { return [] }
+        let request = HosterHTTP.jsonRequest(
+            url: api,
+            referer: embedURL,
+            headers: ["User-Agent": Self.ua],
+            body: ["type": apiType, "id": imdb, "token": token]
+        )
+        let response = try await GermanScrape.client.send(request)
+        guard let root = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+              let sources = root["sources"] as? [[String: Any]] else { return [] }
+        return sources.compactMap { item in
+            guard let raw = item["url"] as? String, !raw.isEmpty,
+                  let url = URL(string: raw) else { return nil }
+            let label = item["name"] as? String
+            return GermanHoster(
+                name: (label?.isEmpty == false ? label! : "StreamCloud"),
+                url: url,
+                referer: embedURL
+            )
+        }
+    }
+}
+
 // MARK: - Registry
 
 enum GermanPlaybackProviders {
@@ -1425,6 +1527,7 @@ enum GermanPlaybackProviders {
             MEGAKinoPlaybackProvider(),
             SerienStreamPlaybackProvider(),
             AniWorldPlaybackProvider(),
+            StreamcloudPlaybackProvider(),
         ]
     }
 }

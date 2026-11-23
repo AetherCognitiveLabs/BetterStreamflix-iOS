@@ -85,6 +85,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case megakino
     case einschalten
     case moflixStream
+    case streamcloud
 
     // English
     case sflix
@@ -146,7 +147,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .streamingCommunity, .hiAnime, .anikoto, .animeIL, .stremio, .bundledHTTP:
             return .core
         case .serienstream, .aniworld, .filmpalast, .filmo, .hdfilme,
-             .kinoger, .megakino, .einschalten, .moflixStream:
+             .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud:
             return .german
         case .sflix, .ridomovies, .anymovie, .mkissa:
             return .english
@@ -183,6 +184,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .megakino: "MEGAKino"
         case .einschalten: "Einschalten"
         case .moflixStream: "Moflix-stream"
+        case .streamcloud: "StreamCloud"
         case .sflix: "SFlix"
         case .ridomovies: "Ridomovies"
         case .anymovie: "AnyMovie"
