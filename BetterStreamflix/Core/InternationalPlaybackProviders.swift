@@ -777,6 +777,7 @@ enum InternationalPlaybackProviders {
             LookMovie2PlaybackProvider(),
             AkwamPlaybackProvider(),
             TopcinemaPlaybackProvider(),
+            OnlyflixPlaybackProvider(),
         ]
     }
 

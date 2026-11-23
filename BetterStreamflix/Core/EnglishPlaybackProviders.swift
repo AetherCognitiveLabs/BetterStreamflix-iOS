@@ -731,3 +731,60 @@ struct TopcinemaPlaybackProvider: ScrapedPlaybackProvider {
         return ScrapedResult(title: title.trimmingCharacters(in: .whitespacesAndNewlines), year: year, kind: .movie, url: url)
     }
 }
+
+// MARK: - Onlyflix
+
+/// WordPress site. Title cards carry `data-title`/`data-year`/`data-url`;
+/// movie and episode pages expose `data-player-post-id`/`data-player-nonce`,
+/// and `admin-ajax.php action=mcp_get_available_players` returns the embeds.
+struct OnlyflixPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "onlyflix" }
+    var displayName: String { "Onlyflix" }
+    var baseURL: URL { URL(string: "https://onlyflix.to/")! }
+
+    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let headers = ["User-Agent": Self.userAgent]
+        let isSeries = context.request.media.kind == .series
+        for query in TitleMatch.queries(for: context) {
+            guard let page = try? await html(try url("", query: ["s": query]), headers: headers) else { continue }
+            let results: [ScrapedResult] = page.all { !$0["data-ofa-kind"].isEmpty && !$0["data-url"].isEmpty }.compactMap { card in
+                guard let link = try? url(card["data-url"]) else { return nil }
+                let kind: MediaKind = card["data-ofa-kind"].contains("tv") ? .series : .movie
+                return ScrapedResult(title: card["data-title"], year: Int(card["data-year"]), kind: kind, url: link)
+            }
+            guard let match = results.bestMatch(for: context) else { continue }
+            var target = match.url
+            var detail = try await html(target, headers: headers)
+            if isSeries {
+                guard let episode = context.request.episode else { return [] }
+                let marker = String(format: "-s%02de%02d", episode.seasonNumber, episode.number)
+                guard let anchor = detail.first({ $0.tag == "a" && $0["href"].contains("/episodes/") && $0["href"].contains(marker) }),
+                      let episodeURL = try? url(anchor["href"]) else { return [] }
+                target = episodeURL
+                detail = try await html(target, referer: match.url, headers: headers)
+            }
+            guard let player = detail.first({ !$0["data-player-post-id"].isEmpty }) else { return [] }
+            let response = try await jsonObject(
+                try url("wp-admin/admin-ajax.php"),
+                referer: target,
+                headers: ["User-Agent": Self.userAgent, "X-Requested-With": "XMLHttpRequest"],
+                form: [
+                    "action": "mcp_get_available_players",
+                    "post_id": player["data-player-post-id"],
+                    "nonce": player["data-player-nonce"],
+                    "type": player["data-player-content-type"],
+                ]
+            )
+            let players = (response["data"] as? [String: Any])?["players"] as? [[String: Any]] ?? []
+            return players.compactMap { entry in
+                guard let raw = entry["url"] as? String, let embed = URL(string: raw) else { return nil }
+                let name = (entry["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? embed.host ?? "Server"
+                let language = (entry["language"] as? String)?.lowercased()
+                return HosterLink(name: name, url: embed, referer: target, audioLanguage: language?.isEmpty == false ? language : nil)
+            }
+        }
+        return []
+    }
+}
