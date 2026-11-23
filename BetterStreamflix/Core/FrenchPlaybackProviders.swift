@@ -590,3 +590,84 @@ enum FrenchDLE {
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
+
+// MARK: - Vostfree
+
+/// French DLE anime site (VF/VOSTFR). Episodes are grouped in
+/// `.button_box#buttons_N` containers; each episode's servers are
+/// `.new_player_{type}` divs whose embed payload sits in hidden
+/// `#content_{playerId}` elements. Ported from VostfreeProvider.kt.
+struct VostfreePlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "vostfree" }
+    var displayName: String { "Vostfree" }
+    var audioLanguage: String { "fr" }
+    var baseURL: URL { URL(string: "https://vostfree.ws/")! }
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        for query in TitleMatch.queries(for: context) {
+            let search = try await html(url("index.php"), form: [
+                "do": "search",
+                "subaction": "search",
+                "search_start": "0",
+                "full_search": "0",
+                "result_from": "1",
+                "story": query,
+            ])
+            let results = search.all { node in
+                node.tag == "a" && !node["title"].isEmpty && node["href"].hasSuffix(".html")
+                    && node["href"].contains("vostfree.ws/")
+            }.compactMap { anchor -> ScrapedResult? in
+                guard let page = ProviderNetwork.absolute(anchor["href"], relativeTo: baseURL) else { return nil }
+                let isMovie = anchor["href"].contains("/films")
+                return ScrapedResult(title: anchor["title"], kind: isMovie ? .movie : .series, url: page)
+            }
+            guard let match = results.bestMatch(for: context) else { continue }
+            return try await links(in: match, context: context)
+        }
+        return []
+    }
+
+    private func links(in match: ScrapedResult, context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let document = try await html(match.url)
+        let episodeNumber = context.request.episode.map { episode -> Int in
+            episode.seasonNumber > 1 ? (context.absoluteEpisodeNumber ?? episode.number) : episode.number
+        } ?? 1
+        guard let box = document.first({ $0["id"] == "buttons_\(episodeNumber)" }) else { return [] }
+        return box.all { node in
+            node.tag == "div" && node["id"].hasPrefix("player_")
+        }.compactMap { div -> HosterLink? in
+            let playerID = div["id"]
+            let type = div["class"]
+            let content = document.first { $0["id"] == "content_\(playerID)" }?.text
+                .replacingOccurrences(of: #"\)+$"#, with: "", options: .regularExpression)
+            guard let content, !content.isEmpty,
+                  let target = Self.serverURL(type: type, content: content, relativeTo: match.url) else { return nil }
+            let label = div.text
+            return HosterLink(
+                name: label.isEmpty ? type : label,
+                url: target,
+                referer: match.url
+            )
+        }
+    }
+
+    private static func serverURL(type: String, content: String, relativeTo base: URL) -> URL? {
+        if type.contains("vip") { return ProviderNetwork.absolute(content, relativeTo: base) }
+        let raw: String
+        if type.contains("uqload") {
+            raw = "https://uqload.io/embed-\(content).html"
+        } else if type.contains("sibnet") {
+            raw = "https://video.sibnet.ru/shell.php?videoid=\(content)"
+        } else if type.contains("myvi") {
+            raw = "https://myvi.ru/player/embed/html/\(content)"
+        } else if type.contains("mp4") {
+            raw = "https://www.mp4upload.com/embed-\(content).html"
+        } else if type.contains("uptostream") {
+            raw = "https://uptostream.com/iframe/\(content)"
+        } else {
+            raw = content
+        }
+        guard raw.hasPrefix("http") else { return nil }
+        return ProviderNetwork.absolute(raw, relativeTo: base)
+    }
+}

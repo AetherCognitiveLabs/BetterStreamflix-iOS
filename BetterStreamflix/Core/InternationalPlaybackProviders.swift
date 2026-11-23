@@ -826,6 +826,7 @@ enum InternationalPlaybackProviders {
             FrenchMangaPlaybackProvider(),
             UnJourUnFilmPlaybackProvider(),
             AfterDarkPlaybackProvider(),
+            VostfreePlaybackProvider(),
         ]
     }
 
