@@ -779,6 +779,7 @@ enum InternationalPlaybackProviders {
             TopcinemaPlaybackProvider(),
             OnlyflixPlaybackProvider(),
             NetPrimePlaybackProvider(),
+            MovyPlaybackProvider(),
         ]
     }
 

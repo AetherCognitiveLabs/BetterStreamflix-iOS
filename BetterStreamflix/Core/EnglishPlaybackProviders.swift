@@ -822,3 +822,162 @@ struct NetPrimePlaybackProvider: ScrapedPlaybackProvider {
         }
     }
 }
+
+// MARK: - Movy
+
+/// movy.sx streams come from api.wecollege.net keyed on the TMDB id: a
+/// short-lived seed, then per-city `sources` answered as an `enc=2` blob.
+/// Both hosts sit behind Cloudflare, so requests go through CloudflareResolver.
+struct MovyPlaybackProvider: ScrapedPlaybackProvider {
+    var id: String { "movy" }
+    var displayName: String { "Movy" }
+    var baseURL: URL { URL(string: "https://movy.sx/")! }
+
+    private static let api = "https://api.wecollege.net"
+    private static let cities: [(city: String, label: String, language: String)] = [
+        ("miami", "Miami", "en"), ("portland", "Portland", "en"), ("austin", "Austin", "en"),
+        ("dallas", "Dallas", "en"), ("munich", "Munich", "de"), ("berlin", "Berlin", "de"),
+        ("paris", "Paris", "fr"), ("delhi", "Delhi", "hi"), ("cancun", "Cancun", "es"),
+    ]
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        guard let target = NetPrimeEmbeds.Target(context: context) else { return [] }
+        if context.request.media.kind == .series, !target.isEpisode { return [] }
+        let referer = baseURL
+        guard let seedURL = URL(string: "\(Self.api)/seed?mediaId=\(target.tmdbID)"),
+              let seedText = try? await CloudflareResolver.get(seedURL, referer: referer, acceptsJSON: true, isUsable: {
+                  $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{")
+              }).text,
+              !seedText.trimmingCharacters(in: .whitespaces).hasPrefix("<") else { return [] }
+        let seedObject = (try? JSONSerialization.jsonObject(with: Data(seedText.utf8))) as? [String: Any]
+        let seed = (seedObject?["seed"] as? String)
+            ?? seedText.trimmingCharacters(in: CharacterSet(charactersIn: "\" \n\r\t"))
+        guard !seed.isEmpty else { return [] }
+
+        let results = await withTaskGroup(of: (Int, HosterLink?).self) { group in
+            for (index, entry) in Self.cities.enumerated() {
+                group.addTask {
+                    (index, await Self.link(city: entry.city, label: entry.label, language: entry.language,
+                                            seed: seed, target: target, referer: referer))
+                }
+            }
+            var collected: [(Int, HosterLink?)] = []
+            for await item in group { collected.append(item) }
+            return collected
+        }
+        return results.sorted { $0.0 < $1.0 }.compactMap(\.1)
+    }
+
+    private static func link(
+        city: String, label: String, language: String,
+        seed: String, target: NetPrimeEmbeds.Target, referer: URL
+    ) async -> HosterLink? {
+        var components = URLComponents(string: "\(api)/\(city)/sources")
+        var items = [
+            URLQueryItem(name: "enc", value: "2"),
+            URLQueryItem(name: "seed", value: seed),
+            URLQueryItem(name: "title", value: target.title),
+            URLQueryItem(name: "mediaType", value: target.isEpisode ? "tv" : "movie"),
+            URLQueryItem(name: "tmdbId", value: String(target.tmdbID)),
+        ]
+        if let year = target.year { items.append(URLQueryItem(name: "year", value: String(year))) }
+        if let imdb = target.imdbID { items.append(URLQueryItem(name: "imdbId", value: imdb)) }
+        if let season = target.season, let episode = target.episode {
+            items.append(URLQueryItem(name: "seasonId", value: String(season)))
+            items.append(URLQueryItem(name: "episodeId", value: String(episode)))
+        }
+        components?.queryItems = items
+        guard let url = components?.url,
+              let response = try? await CloudflareResolver.get(url, referer: referer, acceptsJSON: true, isUsable: {
+                  !$0.contains("<") && $0.count > 16
+              }),
+              (200...299).contains(response.statusCode) else { return nil }
+        let body = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = MovyCipher.decrypt(body, seed: seed, mediaID: target.tmdbID) ?? body
+        guard let root = (try? JSONSerialization.jsonObject(with: Data(plain.utf8))) as? [String: Any],
+              let sources = root["sources"] as? [[String: Any]] else { return nil }
+        let best = sources.compactMap { source -> (url: URL, quality: Int)? in
+            guard let raw = source["url"] as? String, let stream = URL(string: raw) else { return nil }
+            let quality = Int(String(describing: source["quality"] ?? "").filter(\.isNumber)) ?? 0
+            return (stream, quality)
+        }.max { $0.quality < $1.quality }
+        guard let stream = best?.url else { return nil }
+        let subtitles = (root["subtitles"] as? [[String: Any]] ?? []).compactMap { track -> SubtitleSource? in
+            guard let raw = track["url"] as? String, let file = URL(string: raw) else { return nil }
+            let lang = (track["lang"] as? String) ?? "Unknown"
+            return SubtitleSource(providerID: "movy", providerName: "Movy", label: lang,
+                                  languageCode: AnimeStreamResolver.languageCode(lang), url: file)
+        }
+        let headers = ["User-Agent": HTTPClient.desktopUserAgent, "Referer": referer.absoluteString]
+        return HosterLink(
+            name: "Movy \(label) (\(language.uppercased()))",
+            url: stream,
+            referer: referer,
+            audioLanguage: language,
+            isDirect: true,
+            headers: headers,
+            subtitles: subtitles,
+            resolveOverride: {
+                PlaybackSource(url: stream, headers: headers, subtitles: subtitles, preferredPeakBitRate: nil)
+            }
+        )
+    }
+}
+
+/// Port of movy.sx's `enc=2` response cipher (from the site's Next.js chunk):
+/// a seed-scoped XOR keystream whose plaintext starts with the "mvm1" magic.
+enum MovyCipher {
+    private static func mix(_ value: UInt32) -> UInt32 {
+        var e = value
+        e ^= e >> 16
+        e = e &* 0x85eb_ca6b
+        e ^= e >> 13
+        e = e &* 0xc2b2_ae35
+        e ^= e >> 16
+        return e
+    }
+
+    private static func rotl(_ value: UInt32, _ shift: Int) -> UInt32 {
+        let s = UInt32(shift & 31)
+        return s == 0 ? value : (value << s) | (value >> (32 - s))
+    }
+
+    private static func fnv(_ text: String) -> UInt32 {
+        var hash: UInt32 = 0x811c_9dc5
+        for unit in text.utf16 { hash = (hash ^ UInt32(unit)) &* 0x0100_0193 }
+        return mix(hash)
+    }
+
+    static func decrypt(_ body: String, seed: String, mediaID: Int) -> String? {
+        guard let bytes = ExtendedCrypto.b64Decode(body), bytes.count > 4 else { return nil }
+        let golden: UInt32 = 0x9e37_79b9
+        var state = [UInt32](repeating: 0, count: 61)
+        var n = mix(fnv(seed) ^ mix(UInt32(truncatingIfNeeded: mediaID) ^ golden))
+        for e in 0..<8 {
+            let a = Int(n % 61)
+            n = rotl(n &+ golden, 7 + (7 & e))
+            state[a] = n ^ mix(n)
+            n = mix(n &+ UInt32(a))
+        }
+        var acc = mix(0xa5a5_a5a5 ^ n)
+        var output = [UInt8](repeating: 0, count: bytes.count)
+        var counter: UInt32 = 0
+        var index = 0
+        while index < bytes.count {
+            let d = Int(acc % 61)
+            let s = state[d] ^ (golden &* (counter &+ 1))
+            counter &+= 1
+            var b = (acc ^ s) | (acc & s)
+            b = rotl(b &+ acc, d & 31) ^ rotl(acc, (d * 7) & 31)
+            let block = mix(b &+ golden)
+            state[d] = block
+            acc = block
+            for k in 0..<4 where index < bytes.count {
+                output[index] = bytes[index] ^ UInt8(truncatingIfNeeded: block >> UInt32(8 * k))
+                index += 1
+            }
+        }
+        guard output.starts(with: Array("mvm1".utf8)) else { return nil }
+        return String(bytes: output.dropFirst(4), encoding: .utf8)
+    }
+}
