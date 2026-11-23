@@ -44,6 +44,7 @@
 		4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */; };
 		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
 		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
+		5E4BC0FA43B9C6422FDD1A3F /* CloudflareResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */; };
 		59CC5D97DDE60EB30B772F79 /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAD3C33E057EF456186C05C /* HTTPClient.swift */; };
 		6E15AD5DE7CC3147442D2BEC /* HTMLPayloadParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */; };
 		712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */; };
@@ -152,6 +153,7 @@
 		80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeStreamResolver.swift; sourceTree = "<group>"; };
 		8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityProvider.swift; sourceTree = "<group>"; };
 		92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VixcloudResolver.swift; sourceTree = "<group>"; };
+		C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareResolver.swift; sourceTree = "<group>"; };
 		A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleProviders.swift; sourceTree = "<group>"; };
 		D41A5B7B30630001007A449E /* SubtitleCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleCache.swift; sourceTree = "<group>"; };
 		A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
 				1BDE955356AA93FC1945591F /* UserDataBackup.swift */,
 				92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */,
+				C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -498,6 +501,7 @@
 				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
 				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
 				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
+				5E4BC0FA43B9C6422FDD1A3F /* CloudflareResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
