@@ -595,7 +595,7 @@ struct AkwamPlaybackProvider: ScrapedPlaybackProvider {
             let search = try url("search", query: ["q": query])
             guard let page = try? await html(search, headers: headers) else { continue }
             let results: [ScrapedResult] = page.all { $0.hasClass("entry-box") }.compactMap { box in
-                guard let anchor = box.first(where: { $0.tag == "a" && $0["href"].contains(section) }),
+                guard let anchor = box.first({ $0.tag == "a" && $0["href"].contains(section) }),
                       let link = try? url(anchor["href"]) else { return nil }
                 let title = box.first { $0.hasClass("entry-title") }?.text ?? anchor["title"]
                 let year = AnimeHTML.captures(#"\b((?:19|20)\d{2})\b"#, in: box.text).first.flatMap { Int($0[1]) }
