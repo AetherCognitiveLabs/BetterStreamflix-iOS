@@ -50,7 +50,8 @@ final class CloudflareResolver: NSObject {
             || html.contains("challenge-platform")
             || html.contains("challenges.cloudflare.com/turnstile")
             || html.localizedCaseInsensitiveContains("Verify you are human")
-            || html.contains("Attention Required! | Cloudflare") {
+            || html.contains("Attention Required! | Cloudflare")
+            || html.contains("<title>Redirecting...</title>") {
             return true
         }
         return statusCode == 403 || statusCode == 503

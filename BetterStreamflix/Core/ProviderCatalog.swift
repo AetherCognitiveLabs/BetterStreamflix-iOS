@@ -91,6 +91,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case zdfmediathek
     case arte
     case vavoovod
+    case burningseries
 
     // English
     case sflix
@@ -105,6 +106,12 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case movy
     case shahid4u
     case vavoovodEn
+    case nepu
+    case netplayz
+    case cinemacity
+    case wecima
+    case cartoony
+    case egybest
 
     // Italian
     case altadefinizione01
@@ -167,9 +174,9 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .streamingCommunity, .hiAnime, .anikoto, .animeIL, .stremio, .bundledHTTP:
             return .core
         case .serienstream, .aniworld, .filmpalast, .filmo, .hdfilme,
-             .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud, .kellerkino, .ardmediathek, .zdfmediathek, .arte, .vavoovod:
+             .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud, .kellerkino, .ardmediathek, .zdfmediathek, .arte, .vavoovod, .burningseries:
             return .german
-        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime, .movy, .shahid4u, .vavoovodEn:
+        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime, .movy, .shahid4u, .vavoovodEn, .nepu, .netplayz, .cinemacity, .wecima, .cartoony, .egybest:
             return .english
         case .altadefinizione01, .guardaflix, .cb01, .animeunity, .animesaturn,
              .guardaserie, .streamingita, .animeworld, .altadefinizionex, .vavoovodIt:
@@ -210,6 +217,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .zdfmediathek: "ZDF Mediathek"
         case .arte: "ARTE"
         case .vavoovod: "Vavoo VOD"
+        case .burningseries: "BurningSeries"
         case .sflix: "SFlix"
         case .ridomovies: "Ridomovies"
         case .anymovie: "AnyMovie"
@@ -222,6 +230,12 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .movy: "Movy"
         case .shahid4u: "Shahid4u"
         case .vavoovodEn: "Vavoo VOD EN"
+        case .nepu: "Nepu"
+        case .netplayz: "Netplayz"
+        case .cinemacity: "CinemaCity"
+        case .wecima: "WeCima"
+        case .cartoony: "Cartoony"
+        case .egybest: "EgyBest"
         case .altadefinizione01: "Altadefinizione01"
         case .guardaflix: "GuardaFlix"
         case .cb01: "CB01"

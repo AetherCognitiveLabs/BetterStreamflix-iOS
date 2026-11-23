@@ -767,6 +767,153 @@ enum JSPacker {
 
 // MARK: - Registry
 
+// MARK: - Cloudflare generic
+
+/// Broad scraper for reachable-but-challenged sites whose markup differs per
+/// target: every page goes through `CloudflareResolver` (plain HTTP first,
+/// WebView only on a challenge); detail pages are internal non-asset links and
+/// servers are external iframes / `data-*` embed attributes.
+struct CfGenericPlaybackProvider: ScrapedPlaybackProvider {
+    let id: String
+    let displayName: String
+    let audioLanguage: String
+    let baseURL: URL
+    var seriesHints: [String] = ["/series/", "/serie/", "/tv/", "/show/", "/episode/"]
+    var supportsMovies: Bool = true
+
+    static let nepu = CfGenericPlaybackProvider(id: "nepu", displayName: "Nepu", audioLanguage: "en", baseURL: URL(string: "https://nepu.cc/")!)
+    static let netplayz = CfGenericPlaybackProvider(id: "netplayz", displayName: "Netplayz", audioLanguage: "en", baseURL: URL(string: "https://netplayz.top/")!)
+    static let cinemaCity = CfGenericPlaybackProvider(id: "cinemacity", displayName: "CinemaCity", audioLanguage: "en", baseURL: URL(string: "https://cinemacity.cc/")!)
+    static let weCima = CfGenericPlaybackProvider(id: "wecima", displayName: "WeCima", audioLanguage: "ar", baseURL: URL(string: "https://wecima.cx/")!)
+    static let cartoony = CfGenericPlaybackProvider(id: "cartoony", displayName: "Cartoony", audioLanguage: "ar", baseURL: URL(string: "https://cartoony.net/")!)
+    static let egyBest = CfGenericPlaybackProvider(id: "egybest", displayName: "EgyBest", audioLanguage: "ar", baseURL: URL(string: "https://egybest.la/")!)
+    static let burningSeries = CfGenericPlaybackProvider(
+        id: "burningseries", displayName: "BurningSeries", audioLanguage: "de",
+        baseURL: URL(string: "https://burningseries.co/")!,
+        seriesHints: ["/serie/", "/series/", "/episode/"], supportsMovies: false
+    )
+
+    private static let blockedEmbedMarkers = ["youtube", "google", "facebook", "twitter", "/cdn-cgi/"]
+    private static let assetPattern = #"\.(png|jpe?g|webp|gif|svg|ico|woff2?|css|js)(\?.*)?$"#
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        for query in TitleMatch.queries(for: context) {
+            try Task.checkCancellation()
+            let encoded = ProviderNetwork.encoded(query)
+            for path in ["?s=\(encoded)", "search?q=\(encoded)", "search/\(encoded)"] {
+                guard let searchURL = URL(string: baseURL.absoluteString + path),
+                      let html = try? await CloudflareResolver.page(searchURL, referer: baseURL) else { continue }
+                let results = cards(in: html, base: searchURL)
+                guard !results.isEmpty else { continue }
+                guard let match = results.bestMatch(for: context) else { break }
+                var detail = match.url
+                if let episode = context.request.episode {
+                    let showHTML = try await CloudflareResolver.page(detail, referer: searchURL)
+                    guard let page = episodePage(in: showHTML, base: detail, season: episode.seasonNumber, episode: episode.number) else { return [] }
+                    detail = page
+                }
+                let embeds = try await embeds(for: detail)
+                return embeds.enumerated().map { index, embed in
+                    HosterLink(name: "\(displayName) \(index + 1)", url: embed, referer: detail, audioLanguage: audioLanguage)
+                }
+            }
+        }
+        return []
+    }
+
+    private func isInternal(_ url: URL) -> Bool {
+        let host = (url.host ?? "").lowercased().replacingOccurrences(of: "www.", with: "")
+        let own = (baseURL.host ?? "").lowercased().replacingOccurrences(of: "www.", with: "")
+        return host == own || host.hasSuffix(".\(own)")
+    }
+
+    private func isAsset(_ raw: String) -> Bool {
+        raw.range(of: Self.assetPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private func isDetail(_ url: URL) -> Bool {
+        guard isInternal(url), !isAsset(url.absoluteString) else { return false }
+        let path = url.path.lowercased()
+        guard path.count > 1, path.filter({ $0 == "/" }).count >= 2 || !path.hasSuffix("/") else { return false }
+        return !["/category", "/genre", "/page/", "/tag", "/search", "/login", "/register", "/cdn-cgi"].contains(where: path.contains)
+    }
+
+    private func cards(in html: String, base: URL) -> [ScrapedResult] {
+        var seen: Set<String> = []
+        var results: [ScrapedResult] = []
+        for match in AnimeHTML.captures(#"<a\s([^>]*)>([\s\S]*?)</a>"#, in: html) {
+            guard let href = AnimeHTML.captures(#"href=["']([^"']+)["']"#, in: match[1]).first?[1],
+                  let url = ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities(href), relativeTo: base),
+                  isDetail(url), seen.insert(url.absoluteString).inserted else { continue }
+            let titleAttr = AnimeHTML.captures(#"title=["']([^"']+)["']"#, in: match[1]).first?[1]
+            let alt = AnimeHTML.captures(#"alt=["']([^"']+)["']"#, in: match[2]).first?[1]
+            let text = match[2].replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+            let slug = url.lastPathComponent.replacingOccurrences(of: "-", with: " ")
+            let title = [titleAttr, alt, text.count < 150 ? text : nil, slug].compactMap { $0 }
+                .map { HTMLPayloadParser.decodeEntities($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty } ?? ""
+            guard !title.isEmpty else { continue }
+            let path = url.path.lowercased()
+            let kind: MediaKind = seriesHints.contains(where: path.contains) ? .series : .movie
+            results.append(ScrapedResult(title: title, year: AnimeMatching.year(title), kind: kind, url: url))
+        }
+        return results
+    }
+
+    private func episodePage(in html: String, base: URL, season: Int, episode: Int) -> URL? {
+        let patterns = [
+            #"\b\#(season)x\#(episode)\b"#,
+            #"s0?\#(season)[-_]?e0?\#(episode)\b"#,
+            #"(season|staffel|saison|temporada)[-/_]?\#(season)[-/_].*(episode|folge|episodio|capitulo)[-/_]?\#(episode)\b"#,
+        ]
+        let hrefs = AnimeHTML.captures(#"href=["']([^"']+)["']"#, in: html).compactMap {
+            ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities($0[1]), relativeTo: base)
+        }.filter(isInternal)
+        for pattern in patterns {
+            if let hit = hrefs.first(where: {
+                $0.path.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+            }) { return hit }
+        }
+        if season == 1, let hit = hrefs.first(where: {
+            $0.path.range(of: #"(episode|ep)[-_/]?0?\#(episode)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        }) { return hit }
+        return nil
+    }
+
+    private func embeds(for detail: URL) async throws -> [URL] {
+        let html = try await CloudflareResolver.page(detail, referer: baseURL)
+        var found = embeds(in: html, base: detail)
+        guard found.isEmpty else { return found }
+        let watchPages = AnimeHTML.captures(#"href=["']([^"']+)["']"#, in: html).compactMap {
+            ProviderNetwork.absolute(HTMLPayloadParser.decodeEntities($0[1]), relativeTo: detail)
+        }.filter { url in
+            let lower = url.absoluteString.lowercased()
+            return isInternal(url) && url != detail && ["/watch", "/play", "/stream"].contains(where: lower.contains)
+        }
+        var seen: Set<URL> = []
+        for page in watchPages where seen.insert(page).inserted {
+            guard seen.count <= 3 else { break }
+            if let watchHTML = try? await CloudflareResolver.page(page, referer: detail) {
+                found = embeds(in: watchHTML, base: page)
+                if !found.isEmpty { break }
+            }
+        }
+        return found
+    }
+
+    private func embeds(in html: String, base: URL) -> [URL] {
+        var seen: Set<String> = []
+        let pattern = #"(?:<iframe[^>]*\ssrc|data-url|data-src|data-embed|data-link|data-href)=["'](https?://[^"']+)["']"#
+        return AnimeHTML.captures(pattern, in: html).compactMap { match in
+            let raw = HTMLPayloadParser.decodeEntities(match[1])
+            let lower = raw.lowercased()
+            guard !Self.blockedEmbedMarkers.contains(where: lower.contains), !isAsset(raw),
+                  let url = URL(string: raw), !isInternal(url), seen.insert(raw).inserted else { return nil }
+            return url
+        }
+    }
+}
+
 // MARK: - Vavoo VOD
 
 /// Vavoo's MediaHubMX "source" action: POST the TMDB/IMDb ids plus language
@@ -877,6 +1024,12 @@ enum InternationalPlaybackProviders {
             NetPrimePlaybackProvider(),
             MovyPlaybackProvider(),
             Shahid4uPlaybackProvider(),
+            CfGenericPlaybackProvider.nepu,
+            CfGenericPlaybackProvider.netplayz,
+            CfGenericPlaybackProvider.cinemaCity,
+            CfGenericPlaybackProvider.weCima,
+            CfGenericPlaybackProvider.cartoony,
+            CfGenericPlaybackProvider.egyBest,
             VavooVodPlaybackProvider.en,
         ]
     }

@@ -2017,6 +2017,7 @@ enum GermanPlaybackProviders {
             ZdfMediathekPlaybackProvider(),
             ArtePlaybackProvider(),
             VavooVodPlaybackProvider.de,
+            CfGenericPlaybackProvider.burningSeries,
         ]
     }
 }
