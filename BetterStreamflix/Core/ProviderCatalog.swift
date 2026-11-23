@@ -90,6 +90,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case ardmediathek
     case zdfmediathek
     case arte
+    case vavoovod
 
     // English
     case sflix
@@ -103,6 +104,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case netprime
     case movy
     case shahid4u
+    case vavoovodEn
 
     // Italian
     case altadefinizione01
@@ -114,6 +116,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case streamingita
     case animeworld
     case altadefinizionex
+    case vavoovodIt
 
     // Spanish
     case fanpelis
@@ -137,6 +140,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case pelisflixhd
     case poseidonhd2
     case cinehax
+    case vavoovodEs
 
     // French
     case wiflix
@@ -148,10 +152,12 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case unjourunfilm
     case afterdark
     case vostfree
+    case vavoovodFr
 
     // Polish
     case filmyonlinecc
     case zaluknij
+    case vavoovodPl
 
     var id: String { rawValue }
 
@@ -160,22 +166,22 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .streamingCommunity, .hiAnime, .anikoto, .animeIL, .stremio, .bundledHTTP:
             return .core
         case .serienstream, .aniworld, .filmpalast, .filmo, .hdfilme,
-             .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud, .kellerkino, .ardmediathek, .zdfmediathek, .arte:
+             .kinoger, .megakino, .einschalten, .moflixStream, .streamcloud, .kellerkino, .ardmediathek, .zdfmediathek, .arte, .vavoovod:
             return .german
-        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime, .movy, .shahid4u:
+        case .sflix, .ridomovies, .anymovie, .mkissa, .lookmovie2, .akwam, .topcinema, .onlyflix, .netprime, .movy, .shahid4u, .vavoovodEn:
             return .english
         case .altadefinizione01, .guardaflix, .cb01, .animeunity, .animesaturn,
-             .guardaserie, .streamingita, .animeworld, .altadefinizionex:
+             .guardaserie, .streamingita, .animeworld, .altadefinizionex, .vavoovodIt:
             return .italian
         case .fanpelis, .cinecalidad, .flixlatam, .seriesflix, .seriesturcas,
              .lacartoons, .animefenix, .animeflv, .jkanime, .tioanime, .animeav1,
              .cuevanaeu, .latanime, .doramasflix, .animeonlineninja, .sololatino,
-             .cine24h, .pelisplusto, .pelisflixhd, .poseidonhd2, .cinehax:
+             .cine24h, .pelisplusto, .pelisflixhd, .poseidonhd2, .cinehax, .vavoovodEs:
             return .spanish
         case .wiflix, .frenchanime, .frenchstream, .frembed, .kidraz,
-             .frenchmanga, .unjourunfilm, .afterdark, .vostfree:
+             .frenchmanga, .unjourunfilm, .afterdark, .vostfree, .vavoovodFr:
             return .french
-        case .filmyonlinecc, .zaluknij:
+        case .filmyonlinecc, .zaluknij, .vavoovodPl:
             return .polish
         }
     }
@@ -202,6 +208,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .ardmediathek: "ARD Mediathek"
         case .zdfmediathek: "ZDF Mediathek"
         case .arte: "ARTE"
+        case .vavoovod: "Vavoo VOD"
         case .sflix: "SFlix"
         case .ridomovies: "Ridomovies"
         case .anymovie: "AnyMovie"
@@ -213,6 +220,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .netprime: "NetPrime"
         case .movy: "Movy"
         case .shahid4u: "Shahid4u"
+        case .vavoovodEn: "Vavoo VOD EN"
         case .altadefinizione01: "Altadefinizione01"
         case .guardaflix: "GuardaFlix"
         case .cb01: "CB01"
@@ -222,6 +230,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .streamingita: "StreamingIta"
         case .animeworld: "AnimeWorld"
         case .altadefinizionex: "AltadefinizioneX"
+        case .vavoovodIt: "Vavoo VOD IT"
         case .fanpelis: "Fanpelis"
         case .cinecalidad: "CineCalidad"
         case .flixlatam: "FlixLatam"
@@ -243,6 +252,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .pelisflixhd: "PelisflixHD"
         case .poseidonhd2: "PoseidonHD2"
         case .cinehax: "CineHax"
+        case .vavoovodEs: "Vavoo VOD ES"
         case .wiflix: "Wiflix"
         case .frenchanime: "FrenchAnime"
         case .frenchstream: "FrenchStream"
@@ -252,8 +262,10 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .unjourunfilm: "1Jour1Film"
         case .afterdark: "AfterDark"
         case .vostfree: "Vostfree"
+        case .vavoovodFr: "Vavoo VOD FR"
         case .filmyonlinecc: "FilmyOnline"
         case .zaluknij: "Zaluknij"
+        case .vavoovodPl: "Vavoo VOD PL"
         }
     }
 

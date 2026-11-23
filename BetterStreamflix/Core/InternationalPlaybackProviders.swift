@@ -767,6 +767,102 @@ enum JSPacker {
 
 // MARK: - Registry
 
+// MARK: - Vavoo VOD
+
+/// Vavoo's MediaHubMX "source" action: POST the TMDB/IMDb ids plus language
+/// and region, get back hoster embed URLs tagged with their audio languages.
+struct VavooVodPlaybackProvider: ScrapedPlaybackProvider {
+    let id: String
+    let displayName: String
+    let audioLanguage: String
+    let region: String
+    var baseURL: URL { URL(string: "https://vavoo.to/")! }
+
+    static let de = VavooVodPlaybackProvider(id: "vavoovod", displayName: "Vavoo VOD", audioLanguage: "de", region: "DE")
+    static let en = VavooVodPlaybackProvider(id: "vavoovodEn", displayName: "Vavoo VOD EN", audioLanguage: "en", region: "GB")
+    static let it = VavooVodPlaybackProvider(id: "vavoovodIt", displayName: "Vavoo VOD IT", audioLanguage: "it", region: "IT")
+    static let es = VavooVodPlaybackProvider(id: "vavoovodEs", displayName: "Vavoo VOD ES", audioLanguage: "es", region: "ES")
+    static let fr = VavooVodPlaybackProvider(id: "vavoovodFr", displayName: "Vavoo VOD FR", audioLanguage: "fr", region: "FR")
+    static let pl = VavooVodPlaybackProvider(id: "vavoovodPl", displayName: "Vavoo VOD PL", audioLanguage: "pl", region: "PL")
+
+    func hosterLinks(for context: PlaybackLookupContext) async throws -> [HosterLink] {
+        let media = context.request.media
+        guard let tmdb = media.tmdbID else { return [] }
+        var ids: [String: Any] = ["tmdb_id": String(tmdb)]
+        if let imdb = media.imdbID, !imdb.isEmpty { ids["imdb_id"] = imdb }
+        var payload: [String: Any] = [
+            "language": audioLanguage,
+            "region": region,
+            "clientVersion": "3.0.2",
+            "ids": ids,
+            "name": media.title,
+        ]
+        if let release = media.releaseDate, !release.isEmpty { payload["releaseDate"] = release }
+        if let episode = context.request.episode {
+            payload["type"] = "series"
+            payload["episode"] = [
+                "ids": [String: Any](),
+                "name": "Episode \(episode.number)",
+                "season": episode.seasonNumber,
+                "episode": episode.number,
+            ] as [String: Any]
+        } else {
+            payload["type"] = "movie"
+        }
+
+        let referer = baseURL.appendingPathComponent(context.request.episode == nil ? "movies" : "series")
+        var request = URLRequest(url: baseURL.appendingPathComponent("mediahubmx-source.json"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.timeoutInterval = 20
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("MediaHubMX/2", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(audioLanguage, forHTTPHeaderField: "Accept-Language")
+        request.setValue("https://vavoo.to", forHTTPHeaderField: "Origin")
+        request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+        let response = try await client.data(for: request)
+        let json = try JSONSerialization.jsonObject(with: response.data)
+
+        var seen: Set<String> = []
+        var links: [HosterLink] = []
+        collect(json, allowed: true, label: nil, seen: &seen, into: &links)
+        return links
+    }
+
+    private func languageAllowed(_ object: [String: Any], inherited: Bool) -> Bool {
+        var languages = (object["languages"] as? [String]) ?? []
+        for key in ["language", "lang"] { if let value = object[key] as? String { languages.append(value) } }
+        let normalized = languages.compactMap { $0.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init) }
+        return normalized.isEmpty ? inherited : normalized.contains(audioLanguage)
+    }
+
+    private func collect(_ value: Any, allowed: Bool, label: String?, seen: inout Set<String>, into links: inout [HosterLink]) {
+        if let array = value as? [Any] {
+            for item in array { collect(item, allowed: allowed, label: label, seen: &seen, into: &links) }
+            return
+        }
+        guard let object = value as? [String: Any] else { return }
+        let allowedHere = languageAllowed(object, inherited: allowed)
+        guard allowedHere else { return }
+        let name = [object["name"] as? String, object["tag"] as? String].compactMap { $0 }.joined(separator: " ")
+        for key in ["url", "src", "link", "stream", "file"] {
+            guard let raw = object[key] as? String, raw.lowercased().hasPrefix("http"),
+                  let url = URL(string: raw), seen.insert(raw).inserted else { continue }
+            let host = url.host?.replacingOccurrences(of: "www.", with: "") ?? "Server"
+            links.append(HosterLink(
+                name: "Vavoo • \(host)\(name.isEmpty ? "" : " (\(name))")",
+                url: url,
+                referer: baseURL,
+                audioLanguage: audioLanguage
+            ))
+        }
+        for (_, child) in object where child is [Any] || child is [String: Any] {
+            collect(child, allowed: allowedHere, label: name, seen: &seen, into: &links)
+        }
+    }
+}
+
 enum InternationalPlaybackProviders {
     static func english() -> [any PlaybackProvider] {
         [
@@ -781,6 +877,7 @@ enum InternationalPlaybackProviders {
             NetPrimePlaybackProvider(),
             MovyPlaybackProvider(),
             Shahid4uPlaybackProvider(),
+            VavooVodPlaybackProvider.en,
         ]
     }
 
@@ -795,6 +892,7 @@ enum InternationalPlaybackProviders {
             StreamingItaPlaybackProvider(),
             AnimeWorldPlaybackProvider(),
             AltadefinizioneXPlaybackProvider(),
+            VavooVodPlaybackProvider.it,
         ]
     }
 
@@ -821,6 +919,7 @@ enum InternationalPlaybackProviders {
             PelisflixHdPlaybackProvider(),
             PoseidonHD2PlaybackProvider(),
             CineHaxPlaybackProvider(),
+            VavooVodPlaybackProvider.es,
         ]
     }
 
@@ -835,6 +934,7 @@ enum InternationalPlaybackProviders {
             UnJourUnFilmPlaybackProvider(),
             AfterDarkPlaybackProvider(),
             VostfreePlaybackProvider(),
+            VavooVodPlaybackProvider.fr,
         ]
     }
 
@@ -842,6 +942,7 @@ enum InternationalPlaybackProviders {
         [
             FilmyOnlineCcPlaybackProvider(),
             ZaluknijPlaybackProvider(),
+            VavooVodPlaybackProvider.pl,
         ]
     }
 

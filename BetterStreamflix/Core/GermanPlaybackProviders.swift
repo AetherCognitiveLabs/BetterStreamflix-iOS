@@ -2007,6 +2007,7 @@ enum GermanPlaybackProviders {
             ArdMediathekPlaybackProvider(),
             ZdfMediathekPlaybackProvider(),
             ArtePlaybackProvider(),
+            VavooVodPlaybackProvider.de,
         ]
     }
 }
