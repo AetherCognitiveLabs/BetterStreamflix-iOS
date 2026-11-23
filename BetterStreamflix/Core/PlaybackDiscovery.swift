@@ -143,7 +143,9 @@ struct EnrichedPlaybackProvider: PlaybackProvider {
         try await withTaskCancellationHandler {
             let value = await context.value
             try Task.checkCancellation()
-            return try await provider.candidates(for: value)
+            return try await ProviderHealth.shared.guarded(provider.id) {
+                try await provider.candidates(for: value)
+            }
         } onCancel: { context.cancel() }
     }
 }
