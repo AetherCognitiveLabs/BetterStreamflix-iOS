@@ -1695,6 +1695,134 @@ struct ArdMediathekPlaybackProvider: GermanPlaybackProvider {
     }
 }
 
+/// ZDF public API: a bearer token scraped from zdf.de (with a known-good
+/// fallback) unlocks search and the ptmd stream documents.
+struct ZdfMediathekPlaybackProvider: GermanPlaybackProvider {
+    var id: String { "zdfmediathek" }
+    var displayName: String { "ZDF Mediathek" }
+    var baseURL: URL { Self.base }
+
+    private static let base = URL(string: "https://api.zdf.de/")!
+    private static let home = URL(string: "https://www.zdf.de/")!
+    private static let fallbackToken = "ahBaeMeekaiy5ohsai4bee4ki6Oopoi5quailieb"
+    private static let relResults = "http://zdf.de/rels/search/results"
+    private static let relTarget = "http://zdf.de/rels/target"
+    private static let relPtmd = "http://zdf.de/rels/streams/ptmd-template"
+
+    func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
+        var token = Self.fallbackToken
+        let isSeries = context.request.media.kind == .series
+        for query in GermanScrape.queries(for: context) {
+            try Task.checkCancellation()
+            guard let search = GermanScrape.url(baseURL, "search/documents", query: [
+                "q": query, "profile": "default", "itemCount": "24", "page": "1",
+            ]) else { continue }
+            let root: [String: Any]
+            if let value = try? await json(search, token: token) {
+                root = value
+            } else if let fresh = await Self.scrapeToken(), fresh != token,
+                      let value = try? await json(search, token: fresh) {
+                token = fresh
+                root = value
+            } else {
+                continue
+            }
+            let targets = (root[Self.relResults] as? [[String: Any]] ?? []).compactMap { $0[Self.relTarget] as? [String: Any] }
+            let matching = targets.filter { target in
+                let title = (target["teaserHeadline"] as? String) ?? (target["title"] as? String) ?? ""
+                let kind = target["contentType"] as? String
+                return isSeries ? kind == "brand" && GermanScrape.matches(title, context: context)
+                    : kind == "episode" && GermanScrape.matches(title, year: AnimeMatching.year(target["editorialDate"] as? String), context: context)
+                        || kind == "episode" && GermanScrape.matches(title, context: context)
+            }
+            for target in matching.prefix(2) {
+                guard let canonical = target["canonical"] as? String else { continue }
+                var documents = [canonical]
+                if isSeries {
+                    guard let brandURL = Self.documentURL(canonical),
+                          let brand = try? await json(brandURL, token: token) else { continue }
+                    var episodes: [(canonical: String, title: String)] = []
+                    Self.collectEpisodes(brand, into: &episodes)
+                    documents = episodes.filter { PublicBroadcast.matchesEpisode($0.title, context: context) }.map(\.canonical)
+                }
+                for document in documents.prefix(2) {
+                    let found = try await streams(for: document, token: token)
+                    if !found.isEmpty { return found }
+                }
+            }
+        }
+        return []
+    }
+
+    private func streams(for canonical: String, token: String) async throws -> [GermanHoster] {
+        guard let docURL = Self.documentURL(canonical) else { return [] }
+        let doc = try await json(docURL, token: token)
+        guard let main = (doc["mainVideoContent"] as? [String: Any])?[Self.relTarget] as? [String: Any],
+              let template = ((main["streams"] as? [String: Any])?["default"] as? [String: Any])?[Self.relPtmd] as? String,
+              let ptmdURL = GermanScrape.url(baseURL, template.replacingOccurrences(of: "{playerId}", with: "ngplayer_2_4"))
+        else { return [] }
+        let ptmd = try await json(ptmdURL, token: token)
+        let subtitles: [SubtitleSource] = (ptmd["captions"] as? [[String: Any]] ?? []).compactMap { caption in
+            guard let raw = caption["uri"] as? String, raw.lowercased().contains("vtt"),
+                  let url = URL(string: raw) else { return nil }
+            return PublicBroadcast.subtitle(url, label: caption["language"] as? String ?? "de", provider: "ZDF")
+        }
+        var hosters: [GermanHoster] = []
+        for priority in ptmd["priorityList"] as? [[String: Any]] ?? [] {
+            for format in priority["formitaeten"] as? [[String: Any]] ?? [] {
+                let kind: String
+                switch format["type"] as? String {
+                case "h264_aac_ts_http_m3u8_http": kind = "HLS"
+                case "h264_aac_mp4_http_na_na": kind = "MP4"
+                default: continue
+                }
+                for quality in format["qualities"] as? [[String: Any]] ?? [] {
+                    guard let tracks = (quality["audio"] as? [String: Any])?["tracks"] as? [[String: Any]],
+                          let raw = tracks.first?["uri"] as? String, let url = URL(string: raw) else { continue }
+                    let label = (quality["quality"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "auto"
+                    hosters.append(PublicBroadcast.hoster(
+                        name: "ZDF \(kind) \(label)",
+                        url: url,
+                        referer: Self.home,
+                        subtitles: { subtitles }
+                    ))
+                }
+            }
+        }
+        return hosters
+    }
+
+    private func json(_ url: URL, token: String) async throws -> [String: Any] {
+        try await GermanScrape.client.jsonObject(url, referer: Self.home, headers: ["Api-Auth": "Bearer \(token)"])
+    }
+
+    private static func documentURL(_ canonical: String) -> URL? {
+        let path = canonical.contains("?") ? canonical : canonical + "?profile=default"
+        return GermanScrape.url(base, path)
+    }
+
+    private static func scrapeToken() async -> String? {
+        guard let html = try? await GermanScrape.client.page(home, headers: ["User-Agent": PublicBroadcast.userAgent]) else { return nil }
+        return AnimeHTML.captures(#"apiToken[\\"']*:[\\"' ]*([0-9a-zA-Z]{20,})"#, in: html).first?[1]
+    }
+
+    private static func collectEpisodes(_ node: Any, into result: inout [(canonical: String, title: String)]) {
+        if let object = node as? [String: Any] {
+            if (object["type"] as? String == "page-video" || object["contentType"] as? String == "episode"),
+               let canonical = object["canonical"] as? String, !canonical.isEmpty {
+                if !result.contains(where: { $0.canonical == canonical }) {
+                    let title = (object["teaserHeadline"] as? String) ?? (object["title"] as? String) ?? ""
+                    result.append((canonical, title))
+                }
+                return
+            }
+            for value in object.values { collectEpisodes(value, into: &result) }
+        } else if let array = node as? [Any] {
+            for value in array { collectEpisodes(value, into: &result) }
+        }
+    }
+}
+
 // MARK: - Registry
 
 
@@ -1712,6 +1840,7 @@ enum GermanPlaybackProviders {
             AniWorldPlaybackProvider(),
             StreamcloudPlaybackProvider(),
             ArdMediathekPlaybackProvider(),
+            ZdfMediathekPlaybackProvider(),
         ]
     }
 }
