@@ -3784,6 +3784,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
         private let systemVolumeHUDSuppressor = MPVolumeView(frame: .zero)
         private let settingsButton = UIButton(type: .system)
+        private let routePickerView = AVRoutePickerView()
         private let bufferingIndicator = UIActivityIndicatorView(style: .large)
         private let playbackErrorView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
         private let playbackErrorLabel = UILabel()
@@ -3893,6 +3894,14 @@ struct NativePlayerController: UIViewControllerRepresentable {
             settingsButton.translatesAutoresizingMaskIntoConstraints = false
             settingsButton.showsMenuAsPrimaryAction = true
             settingsButton.accessibilityLabel = "Playback settings"
+            routePickerView.translatesAutoresizingMaskIntoConstraints = false
+            routePickerView.prioritizesVideoDevices = true
+            routePickerView.tintColor = .white
+            routePickerView.activeTintColor = .systemBlue
+            routePickerView.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+            routePickerView.layer.cornerRadius = 20
+            routePickerView.alpha = 0
+            routePickerView.accessibilityLabel = "AirPlay"
             configureSubtitleTimingControl()
             if let overlay = controller.contentOverlayView {
                 attachControls(to: overlay)
@@ -3938,11 +3947,13 @@ struct NativePlayerController: UIViewControllerRepresentable {
             bufferingIndicator.removeFromSuperview()
             playbackErrorView.removeFromSuperview()
             settingsButton.removeFromSuperview()
+            routePickerView.removeFromSuperview()
             subtitleTimingControl.removeFromSuperview()
             gestureFeedbackLabel.removeFromSuperview()
             overlay.addSubview(bufferingIndicator)
             overlay.addSubview(playbackErrorView)
             overlay.addSubview(settingsButton)
+            overlay.addSubview(routePickerView)
             overlay.addSubview(subtitleTimingControl)
             overlay.addSubview(gestureFeedbackLabel)
             NSLayoutConstraint.activate([
@@ -3955,6 +3966,10 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 settingsButton.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 10),
                 settingsButton.widthAnchor.constraint(equalToConstant: 40),
                 settingsButton.heightAnchor.constraint(equalToConstant: 40),
+                routePickerView.trailingAnchor.constraint(equalTo: settingsButton.leadingAnchor, constant: -8),
+                routePickerView.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+                routePickerView.widthAnchor.constraint(equalToConstant: 40),
+                routePickerView.heightAnchor.constraint(equalToConstant: 40),
                 subtitleTimingControl.trailingAnchor.constraint(equalTo: settingsButton.trailingAnchor),
                 subtitleTimingControl.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 10),
                 subtitleTimingControl.widthAnchor.constraint(equalToConstant: 156),
@@ -4615,8 +4630,9 @@ struct NativePlayerController: UIViewControllerRepresentable {
                     || subtitleTimingAvailable else { return }
             settingsButton.isHidden = false
             hideTask?.cancel()
-            UIView.animate(withDuration: 0.2) { [settingsButton] in
+            UIView.animate(withDuration: 0.2) { [settingsButton, routePickerView] in
                 settingsButton.alpha = 0.86
+                routePickerView.alpha = 0.86
             }
             hideTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(4))
@@ -4627,8 +4643,9 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
         private func hideSettingsButton() {
             hideTask?.cancel()
-            UIView.animate(withDuration: 0.2) { [settingsButton] in
+            UIView.animate(withDuration: 0.2) { [settingsButton, routePickerView] in
                 settingsButton.alpha = 0
+                routePickerView.alpha = 0
             }
             UIView.animate(withDuration: 0.2) { [subtitleTimingControl] in
                 subtitleTimingControl.alpha = 0
