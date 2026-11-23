@@ -17,6 +17,7 @@ actor ProviderDomainUpdater {
     static let defaults: [String: URL] = [
         "kellerkino": URL(string: "https://www.kellerkino.com/")!,
         "shahid4u": URL(string: "https://shahidd4u.day/")!,
+        "moflix-stream": URL(string: "https://moflix-stream.xyz/")!,
     ]
 
     private static let parkingHosts = ["sedo.com", "godaddy.com", "domainmarket.com", "afternic.com", "hugedomains.com", "dan.com"]

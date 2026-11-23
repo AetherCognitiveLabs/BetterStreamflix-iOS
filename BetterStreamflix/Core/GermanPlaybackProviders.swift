@@ -329,7 +329,7 @@ struct EinschaltenPlaybackProvider: GermanPlaybackProvider {
 struct MStreamPlaybackProvider: GermanPlaybackProvider {
     var id: String { "moflix-stream" }
     var displayName: String { "Moflix-Stream" }
-    var baseURL: URL { Self.base }
+    var baseURL: URL { ProviderDomainUpdater.baseURL(for: "moflix-stream", default: Self.base) }
 
     private static let base = URL(string: "https://moflix-stream.xyz/")!
 
@@ -342,7 +342,7 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
                 "api/v1/titles/\(titleID)/seasons/\(episode.seasonNumber)/episodes/\(episode.number)",
                 query: ["loader": "episodePage"]
             ) else { return [] }
-            videos = Self.videos(in: try await GermanScrape.client.jsonObject(url, referer: baseURL))
+            videos = Self.videos(in: try await Self.json(url, referer: baseURL))
         } else {
             videos = try await movieVideos(for: context)
         }
@@ -368,7 +368,7 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
     private func movieVideos(for context: PlaybackLookupContext) async throws -> [[String: Any]] {
         if let tmdbID = context.request.media.tmdbID,
            let url = GermanScrape.url(baseURL, "api/v1/titles/\(Self.tmdbKey(kind: .movie, id: tmdbID))", query: ["loader": "titlePage"]),
-           let payload = try? await GermanScrape.client.jsonObject(url, referer: baseURL) {
+           let payload = try? await Self.json(url, referer: baseURL) {
             let videos = Self.videos(in: payload)
             if !videos.isEmpty { return videos }
         }
@@ -376,14 +376,14 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
               let primary = result["primary_video"] as? [String: Any],
               let watchID = GermanScrape.scalar(primary["id"]),
               let url = GermanScrape.url(baseURL, "api/v1/watch/\(watchID)") else { return [] }
-        return Self.videos(in: try await GermanScrape.client.jsonObject(url, referer: baseURL))
+        return Self.videos(in: try await Self.json(url, referer: baseURL))
     }
 
     private func titleID(for context: PlaybackLookupContext) async throws -> String? {
         if let tmdbID = context.request.media.tmdbID {
             let key = Self.tmdbKey(kind: .series, id: tmdbID)
             if let url = GermanScrape.url(baseURL, "api/v1/titles/\(key)", query: ["loader": "titlePage"]),
-               let payload = try? await GermanScrape.client.jsonObject(url, referer: baseURL),
+               let payload = try? await Self.json(url, referer: baseURL),
                let title = payload["title"] as? [String: Any],
                let identifier = GermanScrape.scalar(title["id"]) {
                 return identifier
@@ -401,7 +401,7 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
                 "api/v1/search/\(GermanScrape.pathEncoded(query))",
                 query: ["loader": "searchPage"]
             ) else { continue }
-            guard let payload = try? await GermanScrape.client.jsonObject(url, referer: baseURL),
+            guard let payload = try? await Self.json(url, referer: baseURL),
                   let results = payload["results"] as? [[String: Any]] else { continue }
 
             for result in results {
@@ -422,8 +422,9 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
         let videoID = link.absoluteString
             .components(separatedBy: "videos/").last?
             .components(separatedBy: "/playback").first ?? ""
-        let referer = URL(string: base.absoluteString + "watch/" + videoID) ?? base
-        let payload = try await GermanScrape.client.jsonObject(link, referer: referer)
+        let site = ProviderDomainUpdater.baseURL(for: "moflix-stream", default: base)
+        let referer = URL(string: site.absoluteString + "watch/" + videoID) ?? site
+        let payload = try await Self.json(link, referer: referer)
         guard let source = GermanScrape.scalar(payload["src"]), let url = URL(string: source) else {
             throw AppError.noStream
         }
@@ -433,6 +434,14 @@ struct MStreamPlaybackProvider: GermanPlaybackProvider {
             subtitles: [],
             preferredPeakBitRate: nil
         )
+    }
+
+    /// The API sits behind Cloudflare; the WebView bypass only kicks in on a challenge.
+    private static func json(_ url: URL, referer: URL) async throws -> [String: Any] {
+        guard let payload = try await CloudflareResolver.json(url, referer: referer) as? [String: Any] else {
+            throw AppError.invalidResponse
+        }
+        return payload
     }
 
     private static func tmdbKey(kind: MediaKind, id: Int) -> String {
