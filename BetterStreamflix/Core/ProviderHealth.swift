@@ -51,6 +51,14 @@ actor ProviderHealth {
         windows[providerID] = window
     }
 
+    /// Providers currently skipped: quarantined or with an open circuit.
+    func outageProviderIDs(now: Date = Date()) -> [String] {
+        let open = windows.compactMap { id, window in
+            window.openUntil.map { $0 > now } == true ? id : nil
+        }
+        return (Array(Self.quarantinedIDs) + open).sorted()
+    }
+
     func failureCount(_ providerID: String) -> Int {
         windows[providerID]?.failures ?? 0
     }
@@ -71,5 +79,54 @@ actor ProviderHealth {
             }
             throw error
         }
+    }
+}
+
+/// Outage-notice policy ported from BetterStreamflix Android's
+/// ProviderOutagePolicy (no UI here): an outage is relevant when the current
+/// provider is down, or when enough providers are down at once to be severe.
+/// Dismissing hides the notice for a cool-down.
+enum ProviderOutagePolicy {
+    enum Level: Sendable, Equatable {
+        case none, watch, severe
+    }
+
+    static let severeThreshold = 3
+    static let dismissCooldown: TimeInterval = 6 * 60 * 60
+    private static let dismissKey = "providerOutageDismissedAt"
+
+    static func level(outageIDs: [String]) -> Level {
+        if outageIDs.isEmpty { return .none }
+        return outageIDs.count >= severeThreshold ? .severe : .watch
+    }
+
+    /// The current provider when it is down; on a severe outage also the other enabled ones that are down.
+    static func relevantOutageIDs(
+        outageIDs: [String],
+        currentProviderID: String?,
+        enabledProviderIDs: Set<String> = []
+    ) -> [String] {
+        guard !outageIDs.isEmpty else { return [] }
+        var result: [String] = []
+        if let currentProviderID, outageIDs.contains(currentProviderID) { result.append(currentProviderID) }
+        if level(outageIDs: outageIDs) == .severe {
+            result += outageIDs.filter { $0 != currentProviderID && (enabledProviderIDs.isEmpty || enabledProviderIDs.contains($0)) }
+        }
+        return result
+    }
+
+    static func shouldShow(relevantIDs: [String], now: Date = Date()) -> Bool {
+        guard !relevantIDs.isEmpty else { return false }
+        let dismissedAt = UserDefaults.standard.double(forKey: dismissKey)
+        guard dismissedAt > 0 else { return true }
+        return now.timeIntervalSince1970 - dismissedAt >= dismissCooldown
+    }
+
+    static func dismiss(now: Date = Date()) {
+        UserDefaults.standard.set(now.timeIntervalSince1970, forKey: dismissKey)
+    }
+
+    static func clearDismiss() {
+        UserDefaults.standard.removeObject(forKey: dismissKey)
     }
 }
