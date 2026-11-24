@@ -62,6 +62,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> UIInterfaceOrientationMask {
         AppOrientationController.shared.supportedOrientations
     }
+
+    /// iOS relaunches the app when a background download session finishes;
+    /// recreating the session's owner lets it deliver the pending events.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        BackgroundSessionEvents.store(identifier, completionHandler)
+        if identifier == MangaDownloadManager.sessionID {
+            _ = MangaDownloadManager.shared
+        } else {
+            _ = DownloadManager.shared
+        }
+    }
 }
 
 @main

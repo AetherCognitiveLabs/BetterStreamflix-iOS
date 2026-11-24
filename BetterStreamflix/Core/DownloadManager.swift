@@ -236,6 +236,11 @@ final class DownloadManager: NSObject, ObservableObject {
 }
 
 extension DownloadManager: AVAssetDownloadDelegate, URLSessionDownloadDelegate {
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        let identifier = session.configuration.identifier
+        Task { @MainActor in BackgroundSessionEvents.finish(identifier) }
+    }
+
     nonisolated func urlSession(
         _ session: URLSession,
         assetDownloadTask: AVAssetDownloadTask,
@@ -349,5 +354,21 @@ struct OfflinePlaybackProvider: PlaybackProvider {
         ) {
             PlaybackSource(url: url, headers: [:], subtitles: [], preferredPeakBitRate: nil)
         }]
+    }
+}
+
+/// Completion handlers iOS passes when it relaunches the app for a background
+/// download session; called once that session has delivered its events.
+@MainActor
+enum BackgroundSessionEvents {
+    private static var handlers: [String: () -> Void] = [:]
+
+    static func store(_ identifier: String, _ handler: @escaping () -> Void) {
+        handlers[identifier] = handler
+    }
+
+    static func finish(_ identifier: String?) {
+        guard let identifier, let handler = handlers.removeValue(forKey: identifier) else { return }
+        handler()
     }
 }
