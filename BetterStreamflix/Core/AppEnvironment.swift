@@ -416,6 +416,7 @@ final class AppEnvironment: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-mangaSmoke") {
             Task.detached {
                 for line in await MangaCatalog.smoke() { print(line) }
+                await MangaDownloadManager.smokeDownload()
                 print("MANGA done")
             }
         }

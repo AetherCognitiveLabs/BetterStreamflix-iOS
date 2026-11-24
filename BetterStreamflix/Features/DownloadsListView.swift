@@ -3,14 +3,16 @@ import SwiftUI
 /// Library segment listing offline copies with progress, size and retry/delete.
 struct DownloadsListView: View {
     @ObservedObject private var manager = DownloadManager.shared
+    @ObservedObject private var mangaDownloads = MangaDownloadManager.shared
+    @State private var mangaReader: MangaReaderTarget?
     var onPlay: (PlaybackRequest) -> Void
 
     var body: some View {
-        if manager.items.isEmpty {
+        if manager.items.isEmpty && mangaDownloads.items.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "arrow.down.circle").font(.largeTitle).foregroundStyle(.secondary)
                 Text("No downloads yet").font(.headline).foregroundStyle(AppTheme.primaryText)
-                Text("Start a title, then choose Download in the player's settings menu.")
+                Text("Start a title, then choose Download in the player's settings menu. Manga chapters download from a title's chapter list (swipe a chapter).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -19,6 +21,7 @@ struct DownloadsListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
+                if !manager.items.isEmpty {
                 Section {
                     ForEach(manager.items) { item in
                         row(item)
@@ -31,9 +34,14 @@ struct DownloadsListView: View {
                 } footer: {
                     Text("\(Self.size(manager.totalBytesOnDisk)) on this device")
                 }
+                }
+                MangaDownloadsSection(reader: $mangaReader)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            .fullScreenCover(item: $mangaReader) { target in
+                MangaReaderView(manga: target.manga, chapterIndex: target.chapterIndex, startPage: target.page)
+            }
         }
     }
 

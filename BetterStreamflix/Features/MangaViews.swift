@@ -184,6 +184,7 @@ private struct MangaCover: View {
 struct MangaDetailView: View {
     let manga: Manga
     @ObservedObject private var library = MangaLibrary.shared
+    @ObservedObject private var downloads = MangaDownloadManager.shared
     @AppStorage("manga.chapters.newestFirst") private var newestFirst = true
     @State private var detail: Manga?
     @State private var errorText: String?
@@ -236,6 +237,12 @@ struct MangaDetailView: View {
                                 library.setRead(chapter, in: current, read: !read)
                             }
                             .tint(read ? .gray : .accentColor)
+                            if let download = downloads.item(current, chapter) {
+                                Button("Remove", role: .destructive) { downloads.remove(download.id) }
+                            } else {
+                                Button("Download") { downloads.download(chapter, of: current) }
+                                    .tint(.blue)
+                            }
                         }
                     }
                 } header: {
@@ -288,9 +295,26 @@ struct MangaDetailView: View {
                 }
             }
             Spacer()
+            downloadBadge(chapter)
             if read { Image(systemName: "checkmark").foregroundStyle(.secondary) }
         }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func downloadBadge(_ chapter: MangaChapter) -> some View {
+        if let download = downloads.item(current, chapter) {
+            switch download.state {
+            case .completed:
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.secondary)
+                    .accessibilityLabel("Downloaded")
+            case .queued, .downloading:
+                ProgressView(value: download.progress).frame(width: 36)
+            case .failed:
+                Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
+                    .accessibilityLabel("Download failed")
+            }
+        }
     }
 
     private func resumeTitle(_ detail: Manga) -> String {
@@ -323,12 +347,20 @@ struct MangaDetailView: View {
             errorText = nil
         } catch is CancellationError {
         } catch {
-            errorText = error.localizedDescription
+            // Offline: fall back to the chapters downloaded for this title.
+            let saved = downloads.completed(for: manga)
+            if detail == nil, !saved.isEmpty {
+                var offline = manga
+                offline.chapters = saved.map(\.chapter)
+                detail = offline
+            } else {
+                errorText = error.localizedDescription
+            }
         }
     }
 }
 
-private struct MangaReaderTarget: Identifiable {
+struct MangaReaderTarget: Identifiable {
     let id = UUID()
     let manga: Manga
     let chapterIndex: Int
@@ -480,12 +512,19 @@ struct MangaReaderView: View {
     }
 
     private func loadPages() async {
-        guard let provider = MangaCatalog.provider(id: manga.providerID) else { return }
         isLoading = true
         errorText = nil
         defer { isLoading = false }
         do {
-            let loaded = try await provider.pages(chapterID: chapter.id)
+            let loaded: [MangaPage]
+            if let local = MangaDownloadManager.shared.localPages(for: manga, chapter: chapter) {
+                loaded = local
+            } else {
+                guard let provider = MangaCatalog.provider(id: manga.providerID) else {
+                    throw AppError.providerUnavailable("Unknown source \(manga.providerID)")
+                }
+                loaded = try await provider.pages(chapterID: chapter.id)
+            }
             pages = loaded.enumerated().map { MangaPage(index: $0.offset, imageURL: $0.element.imageURL, headers: $0.element.headers) }
             if pages.isEmpty { errorText = "No pages found for this chapter." }
             if paged, let page = pendingPage {
@@ -502,6 +541,83 @@ struct MangaReaderView: View {
         guard !pages.isEmpty else { return }
         let page = min(currentPage, pages.count - 1)
         MangaLibrary.shared.save(manga: manga, chapter: chapter, pageIndex: page, finished: currentPage >= pages.count - 1)
+    }
+}
+
+// MARK: Downloads
+
+/// Manga chapters in the Library's Downloads list; finished ones open in the
+/// reader from disk.
+struct MangaDownloadsSection: View {
+    @ObservedObject private var downloads = MangaDownloadManager.shared
+    @Binding var reader: MangaReaderTarget?
+
+    var body: some View {
+        if !downloads.items.isEmpty {
+            Section {
+                ForEach(downloads.items) { item in
+                    Button { open(item) } label: { row(item) }
+                        .buttonStyle(.plain)
+                        .swipeActions {
+                            Button(role: .destructive) { downloads.remove(item.id) } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                }
+            } header: {
+                Text("Manga")
+            } footer: {
+                Text("\(ByteCountFormatter.string(fromByteCount: downloads.totalBytesOnDisk, countStyle: .file)) of manga on this device")
+            }
+        }
+    }
+
+    private func row(_ item: MangaChapterDownload) -> some View {
+        HStack(spacing: 12) {
+            MangaCover(manga: item.manga).frame(width: 40, height: 58)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.manga.title).font(.headline).foregroundStyle(AppTheme.primaryText).lineLimit(1)
+                Text(item.chapter.displayTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                switch item.state {
+                case .queued:
+                    Text("Queued").font(.caption2).foregroundStyle(.secondary)
+                case .downloading:
+                    ProgressView(value: item.progress)
+                    Text("\(item.pagesDone) of \(item.pageCount) pages").font(.caption2).foregroundStyle(.secondary)
+                case .completed:
+                    Text("Downloaded · \(item.pageCount) pages · \(ByteCountFormatter.string(fromByteCount: item.bytesOnDisk, countStyle: .file))")
+                        .font(.caption2).foregroundStyle(.secondary)
+                case .failed:
+                    Text(item.errorMessage ?? "Download failed").font(.caption2).foregroundStyle(.red).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            switch item.state {
+            case .completed:
+                Image(systemName: "book.circle.fill").font(.title2).foregroundStyle(.secondary)
+            case .failed:
+                Button { downloads.retry(item.id) } label: { Image(systemName: "arrow.clockwise.circle.fill").font(.title2) }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Retry download")
+            case .queued, .downloading:
+                Button { downloads.cancel(item.id) } label: { Image(systemName: "xmark.circle.fill").font(.title2) }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Cancel download")
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func open(_ item: MangaChapterDownload) {
+        guard item.state == .completed else { return }
+        let saved = downloads.completed(for: item.manga)
+        guard let index = saved.firstIndex(where: { $0.id == item.id }) else { return }
+        var manga = item.manga
+        manga.chapters = saved.map(\.chapter)
+        let progress = MangaLibrary.shared.progress(for: manga)
+        let page = progress?.chapterID == item.chapter.id ? progress?.pageIndex ?? 0 : 0
+        reader = MangaReaderTarget(manga: manga, chapterIndex: index, page: page)
     }
 }
 
