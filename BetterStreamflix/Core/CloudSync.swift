@@ -1,4 +1,6 @@
+import Combine
 import Foundation
+import Network
 import Security
 
 /// One row of Android's Supabase `user_media_state` table (same column names,
@@ -212,6 +214,62 @@ final class CloudSyncManager: ObservableObject {
 
     private init() { reloadForActiveProfile() }
 
+    // MARK: Auto-sync
+
+    static let autoSyncDebounce: TimeInterval = 20
+
+    private var autoSyncCancellable: AnyCancellable?
+    private let pathMonitor = NWPathMonitor()
+    private var isOnline = true
+    private var pendingAutoSync = false
+    private var ignoreChangesUntil = Date.distantPast
+    private weak var autoSyncLibrary: LibraryStore?
+
+    /// Syncs on launch and, debounced, after watchlist / watched / progress
+    /// changes. Only runs when signed in; offline changes wait for the next
+    /// change or for connectivity to return.
+    func startAutoSync(library: LibraryStore) {
+        guard autoSyncCancellable == nil else { return }
+        autoSyncLibrary = library
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let cameBack = online && !self.isOnline
+                self.isOnline = online
+                if cameBack && self.pendingAutoSync { self.autoSyncIfPossible() }
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "cloud.sync.path"))
+        autoSyncCancellable = Publishers.Merge3(
+            library.$watchlist.map { _ in () },
+            library.$progress.map { _ in () },
+            library.$watchedEpisodes.map { _ in () }
+        )
+        .dropFirst(3)
+        .filter { [weak self] in
+            guard let self else { return false }
+            return !self.isSyncing && Date() >= self.ignoreChangesUntil
+        }
+        .debounce(for: .seconds(Self.autoSyncDebounce), scheduler: DispatchQueue.main)
+        .sink { [weak self] in self?.autoSyncIfPossible() }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            self?.autoSyncIfPossible()
+        }
+    }
+
+    private func autoSyncIfPossible() {
+        guard let library = autoSyncLibrary, isSignedIn, isConfigured,
+              !ProfileStore.shared.activeProfile.isKids else { return }
+        guard isOnline else {
+            pendingAutoSync = true
+            return
+        }
+        pendingAutoSync = false
+        Task { await syncNow(library: library) }
+    }
+
     var projectURL: String { UserDefaults.standard.string(forKey: Self.urlKey) ?? "" }
     var anonKey: String { UserDefaults.standard.string(forKey: Self.anonKeyKey) ?? "" }
     var isConfigured: Bool { config != nil }
@@ -330,7 +388,11 @@ final class CloudSyncManager: ObservableObject {
     func syncNow(library: LibraryStore) async {
         guard !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            // Library edits applied from the cloud shouldn't schedule another sync.
+            ignoreChangesUntil = Date().addingTimeInterval(1)
+        }
         do {
             let summary = try await performSync(library: library)
             lastSyncAt = Date()
@@ -338,6 +400,7 @@ final class CloudSyncManager: ObservableObject {
             lastMessage = summary
         } catch {
             lastMessage = error.localizedDescription
+            if (error as? URLError)?.code == .notConnectedToInternet { pendingAutoSync = true }
         }
     }
 

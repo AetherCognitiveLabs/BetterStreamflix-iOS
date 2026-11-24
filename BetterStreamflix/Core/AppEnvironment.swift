@@ -412,6 +412,7 @@ final class AppEnvironment: ObservableObject {
         library = LibraryStore(directory: ProfileStore.libraryDirectory(for: ProfileStore.persistedActiveID()))
         // Warm the Stremio addon store so curated defaults seed in the background.
         _ = StremioAddonStore.shared
+        CloudSyncManager.shared.startAutoSync(library: library)
     }
 
     private static func importBundledTMDBAccessTokenIfNeeded(into credentials: TMDBCredentialStore) {
