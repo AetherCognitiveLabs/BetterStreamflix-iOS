@@ -27,6 +27,7 @@ final class MangaDownloadManager: ObservableObject {
     static let shared = MangaDownloadManager()
     private static let storageKey = "manga.downloads.v1"
     private static let concurrentPages = 4
+    private static let concurrentChapters = 2
 
     @Published private(set) var items: [MangaChapterDownload] = []
     private var tasks: [String: Task<Void, Never>] = [:]
@@ -79,10 +80,43 @@ final class MangaDownloadManager: ObservableObject {
             if existing.state == .failed { retry(id) }
             return
         }
-        let digest = SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
-        items.insert(MangaChapterDownload(id: id, manga: manga.summary, chapter: chapter, folder: String(digest.prefix(32))), at: 0)
+        items.insert(newItem(chapter, of: manga), at: 0)
         persist()
-        start(id)
+        pump()
+    }
+
+    /// Queues every chapter not downloaded yet; chapters download two at a time
+    /// in list order. Returns how many were added.
+    @discardableResult
+    func downloadAll(_ chapters: [MangaChapter], of manga: Manga) -> Int {
+        let existing = Set(items.map(\.id))
+        let fresh = chapters.filter { !existing.contains(Self.id(manga, $0)) }
+        let base = Date()
+        for (offset, chapter) in fresh.enumerated() {
+            var item = newItem(chapter, of: manga)
+            item.createdAt = base.addingTimeInterval(Double(offset) / 1000)
+            items.insert(item, at: 0)
+        }
+        for item in items where item.state == .failed && chapters.contains(item.chapter) && MangaLibrary.key(item.manga) == MangaLibrary.key(manga) {
+            update(item.id) {
+                $0.state = .queued
+                $0.errorMessage = nil
+            }
+        }
+        persist()
+        pump()
+        return fresh.count
+    }
+
+    func removeAll(for manga: Manga) {
+        let key = MangaLibrary.key(manga)
+        for item in items where MangaLibrary.key(item.manga) == key { remove(item.id) }
+    }
+
+    private func newItem(_ chapter: MangaChapter, of manga: Manga) -> MangaChapterDownload {
+        let id = Self.id(manga, chapter)
+        let digest = SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
+        return MangaChapterDownload(id: id, manga: manga.summary, chapter: chapter, folder: String(digest.prefix(32)))
     }
 
     func retry(_ id: String) {
@@ -91,7 +125,7 @@ final class MangaDownloadManager: ObservableObject {
             $0.errorMessage = nil
             $0.pagesDone = 0
         }
-        start(id)
+        pump()
     }
 
     func cancel(_ id: String) { remove(id) }
@@ -106,11 +140,17 @@ final class MangaDownloadManager: ObservableObject {
         persist()
     }
 
-    private func start(_ id: String) {
-        tasks[id]?.cancel()
-        tasks[id] = Task { [weak self] in
-            await self?.run(id)
-            self?.tasks[id] = nil
+    /// Starts the oldest queued chapters while fewer than two are running.
+    private func pump() {
+        while tasks.count < Self.concurrentChapters,
+              let next = items.filter({ $0.state == .queued && tasks[$0.id] == nil }).min(by: { $0.createdAt < $1.createdAt }) {
+            let id = next.id
+            update(id) { $0.state = .downloading }
+            tasks[id] = Task { [weak self] in
+                await self?.run(id)
+                self?.tasks[id] = nil
+                self?.pump()
+            }
         }
     }
 
@@ -164,28 +204,34 @@ final class MangaDownloadManager: ObservableObject {
         }
     }
 
-    /// Downloads one WeebCentral chapter, checks the files and deletes it again;
+    /// Queues WeebCentral's three newest One Piece chapters through
+    /// `downloadAll`, checks every saved page decodes, then deletes them;
     /// used by `-mangaSmoke`.
     static func smokeDownload() async {
         let provider = WeebCentralMangaProvider()
         do {
-            guard let first = try await provider.search("one piece").first,
-                  let chapter = try await provider.manga(id: first.id).chapters.last else {
-                print("MANGA DOWNLOAD FAIL no chapter")
+            guard let first = try await provider.search("one piece").first else {
+                print("MANGA DOWNLOAD FAIL no title")
                 return
             }
             let manga = try await provider.manga(id: first.id)
-            shared.download(chapter, of: manga)
-            let id = Self.id(manga, chapter)
-            for _ in 0..<90 {
+            let chapters = Array(manga.chapters.suffix(3))
+            let queued = shared.downloadAll(chapters, of: manga)
+            let ids = chapters.map { Self.id(manga, $0) }
+            for _ in 0..<150 {
                 try await Task.sleep(for: .seconds(1))
-                guard let item = shared.items.first(where: { $0.id == id }), item.state == .queued || item.state == .downloading else { break }
+                let pending = shared.items.filter { ids.contains($0.id) && ($0.state == .queued || $0.state == .downloading) }
+                if pending.isEmpty { break }
             }
-            let item = shared.items.first { $0.id == id }
-            let local = shared.localPages(for: manga, chapter: chapter) ?? []
-            let decodable = local.filter { (try? Data(contentsOf: $0.imageURL)).flatMap(UIImage.init(data:)) != nil }.count
-            print("MANGA DOWNLOAD \(item?.state == .completed && decodable == local.count && !local.isEmpty ? "PASS" : "FAIL") state=\(item?.state.rawValue ?? "nil") pages=\(item?.pageCount ?? 0) files=\(local.count) decodable=\(decodable) bytes=\(item?.bytesOnDisk ?? 0) \(item?.errorMessage ?? "")")
-            shared.remove(id)
+            for chapter in chapters {
+                let id = Self.id(manga, chapter)
+                let item = shared.items.first { $0.id == id }
+                let local = shared.localPages(for: manga, chapter: chapter) ?? []
+                let decodable = local.filter { (try? Data(contentsOf: $0.imageURL)).flatMap(UIImage.init(data:)) != nil }.count
+                let ok = item?.state == .completed && !local.isEmpty && decodable == local.count
+                print("MANGA DOWNLOAD \(ok ? "PASS" : "FAIL") queued=\(queued) ch\(chapter.numberLabel) state=\(item?.state.rawValue ?? "nil") pages=\(item?.pageCount ?? 0) files=\(local.count) decodable=\(decodable) bytes=\(item?.bytesOnDisk ?? 0) \(item?.errorMessage ?? "")")
+            }
+            shared.removeAll(for: manga)
         } catch {
             print("MANGA DOWNLOAD FAIL \(error.localizedDescription)")
         }

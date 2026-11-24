@@ -260,6 +260,11 @@ struct MangaDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                if let detail, !detail.chapters.isEmpty {
+                    downloadMenu(detail)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     library.toggleFavorite(current)
                 } label: {
@@ -299,6 +304,28 @@ struct MangaDetailView: View {
             if read { Image(systemName: "checkmark").foregroundStyle(.secondary) }
         }
         .contentShape(Rectangle())
+    }
+
+    private func downloadMenu(_ detail: Manga) -> some View {
+        let unread = detail.chapters.filter { !library.isRead($0, in: detail) }
+        let hasDownloads = downloads.items.contains { MangaLibrary.key($0.manga) == MangaLibrary.key(detail) }
+        return Menu {
+            Button("Download unread (\(unread.count))", systemImage: "arrow.down.circle") {
+                downloads.downloadAll(unread, of: detail)
+            }
+            .disabled(unread.isEmpty)
+            Button("Download all (\(detail.chapters.count))", systemImage: "arrow.down.circle.dotted") {
+                downloads.downloadAll(detail.chapters, of: detail)
+            }
+            if hasDownloads {
+                Button("Remove downloads", systemImage: "trash", role: .destructive) {
+                    downloads.removeAll(for: detail)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.down.circle")
+        }
+        .accessibilityLabel("Download chapters")
     }
 
     @ViewBuilder
