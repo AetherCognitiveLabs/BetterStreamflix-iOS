@@ -175,7 +175,12 @@ private func capture(_ pattern: String, in text: String, group: Int = 1) -> Stri
 }
 
 private func absoluteURL(_ value: String, base: URL) -> URL? {
-    guard let value = nonBlank(value) else { return nil }
+    guard var value = nonBlank(value) else { return nil }
+    // Encode raw characters (e.g. "♡" in Toonily file names) ourselves; letting
+    // URL(string:) do it re-encodes the existing "%5B" escapes as "%255B".
+    var allowed = CharacterSet.urlQueryAllowed
+    allowed.insert(charactersIn: "%#[]")
+    value = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     if value.hasPrefix("//") { return URL(string: "https:" + value) }
     return URL(string: value, relativeTo: base)?.absoluteURL
 }
