@@ -184,5 +184,6 @@ struct ContinueWatchingWidget: Widget {
 struct BetterStreamflixWidgets: WidgetBundle {
     var body: some Widget {
         ContinueWatchingWidget()
+        LiveFavoritesWidget()
     }
 }

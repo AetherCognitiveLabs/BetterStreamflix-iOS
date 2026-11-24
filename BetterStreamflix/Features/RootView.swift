@@ -29,6 +29,7 @@ struct RootView: View {
     @State private var automaticUpdateRelease: AppUpdateInfo?
     @State private var pendingStremioInstallURL: String?
     @State private var shortcutResumePlayback: PlaybackRequest?
+    @State private var widgetLiveChannel: LiveChannel?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
 
     var body: some View {
@@ -110,6 +111,13 @@ struct RootView: View {
             }
             if let target = WidgetDeepLink.consumePending() {
                 handleWidgetLink(target)
+            }
+        }
+        .fullScreenCover(item: $widgetLiveChannel) { channel in
+            let provider = LiveTVProviders.all().first { $0.id == channel.providerID }
+            LivePlayerView(channel: channel) {
+                if let provider { return try await provider.resolve(channel) }
+                return channel.playbackSource
             }
         }
         .fullScreenCover(item: $shortcutResumePlayback) { request in
@@ -233,7 +241,22 @@ struct RootView: View {
             } else {
                 selectedTab = .library
             }
+        case .liveChannel(let id, let providerID):
+            if !ProfileStore.shared.activeProfile.isKids,
+               let favorite = LiveFavoritesStore.shared.favorite(providerID: providerID, channelID: id) {
+                widgetLiveChannel = favorite.channel
+            } else {
+                openLiveHub()
+            }
+        case .liveHub:
+            openLiveHub()
         }
+    }
+
+    private func openLiveHub() {
+        selectedTab = .more
+        UserDefaults.standard.set("liveTV", forKey: "stremio.shortcut.moreRoute.v1")
+        NotificationCenter.default.post(name: Notification.Name("stremio.shortcut.moreRoute"), object: "liveTV")
     }
 
     private func handleShortcut(routeRaw: String?) {

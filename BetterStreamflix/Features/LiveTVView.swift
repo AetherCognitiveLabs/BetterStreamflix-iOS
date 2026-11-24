@@ -11,6 +11,7 @@ struct LiveTVView: View {
     @State private var query = ""
     @State private var playing: LiveChannel?
     @State private var outageIDs: [String] = []
+    @ObservedObject private var favorites = LiveFavoritesStore.shared
 
     private var provider: any LiveTVProvider {
         providers.first { $0.id == providerID } ?? providers[0]
@@ -32,11 +33,17 @@ struct LiveTVView: View {
             if !outageIDs.isEmpty {
                 Section { outageNotice }
             }
+            if query.isEmpty, !favorites.favorites.isEmpty {
+                Section("Favorites · \(favorites.favorites.count)") {
+                    ForEach(favorites.favorites) { favorite in
+                        channelButton(favorite.channel)
+                    }
+                }
+            }
             ForEach(visibleGroups) { group in
                 Section("\(group.name) · \(group.channels.count)") {
                     ForEach(group.channels) { channel in
-                        Button { playing = channel } label: { LiveChannelRow(channel: channel) }
-                            .buttonStyle(.plain)
+                        channelButton(channel)
                     }
                 }
             }
@@ -59,9 +66,26 @@ struct LiveTVView: View {
         .task(id: providerID) { await load() }
         .refreshable { await load() }
         .fullScreenCover(item: $playing) { channel in
-            let provider = provider
+            let provider = providers.first { $0.id == channel.providerID } ?? provider
             LivePlayerView(channel: channel) { try await provider.resolve(channel) }
         }
+    }
+
+    private func channelButton(_ channel: LiveChannel) -> some View {
+        let isFavorite = favorites.isFavorite(channel)
+        return Button { playing = channel } label: { LiveChannelRow(channel: channel, isFavorite: isFavorite) }
+            .buttonStyle(.plain)
+            .swipeActions {
+                Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash" : "star") {
+                    favorites.toggle(channel)
+                }
+                .tint(.yellow)
+            }
+            .contextMenu {
+                Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
+                    favorites.toggle(channel)
+                }
+            }
     }
 
     @ViewBuilder
@@ -146,6 +170,7 @@ struct LiveTVView: View {
 
 private struct LiveChannelRow: View {
     let channel: LiveChannel
+    var isFavorite = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -167,6 +192,7 @@ private struct LiveChannelRow: View {
                 }
             }
             Spacer(minLength: 0)
+            if isFavorite { Image(systemName: "star.fill").foregroundStyle(.yellow).font(.caption) }
             Image(systemName: "play.circle.fill").foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())

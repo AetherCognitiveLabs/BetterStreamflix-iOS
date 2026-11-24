@@ -11,6 +11,19 @@ struct WidgetContinueRow: Codable, Hashable, Sendable {
     let artworkURL: URL?
 }
 
+/// Tile shown by the Live Favorites widget; mirrored in the widget target.
+struct WidgetLiveRow: Codable, Hashable, Sendable {
+    let channelID: String
+    let providerID: String
+    let title: String
+    let logo: URL?
+}
+
+struct WidgetLiveSnapshot: Codable, Sendable {
+    let rows: [WidgetLiveRow]
+    let updatedAt: Date
+}
+
 struct WidgetContinueSnapshot: Codable, Sendable {
     let rows: [WidgetContinueRow]
     let updatedAt: Date
@@ -25,6 +38,8 @@ enum WidgetDeepLink {
 
     enum Target: Equatable {
         case continueWatching(contentID: String?)
+        case liveHub
+        case liveChannel(id: String, providerID: String)
     }
 
     static func parse(_ url: URL) -> Target? {
@@ -35,6 +50,9 @@ enum WidgetDeepLink {
         }
         switch url.host?.lowercased() {
         case "continue": return .continueWatching(contentID: value("id"))
+        case "live":
+            guard let id = value("id"), let provider = value("provider") else { return .liveHub }
+            return .liveChannel(id: id, providerID: provider)
         default: return nil
         }
     }
@@ -64,18 +82,33 @@ final class WidgetSnapshotWriter {
     static let appGroup = "group.com.betterstreamflix.ios"
     static let fileName = "widget-continue-watching.json"
     static let widgetKind = "ContinueWatching"
+    static let liveFileName = "widget-live-favorites.json"
+    static let liveWidgetKind = "LiveFavorites"
 
     private var cancellable: AnyCancellable?
     private var lastRows: [WidgetContinueRow]?
 
     func start(library: LibraryStore) {
         guard cancellable == nil else { return }
+        writeLiveFavorites()
         cancellable = library.$progress
             .debounce(for: .seconds(2), scheduler: DispatchQueue.main)
             .sink { [weak self, weak library] _ in
                 guard let self, let library else { return }
                 self.write(library)
             }
+    }
+
+    /// Up to four starred channels; none on Kids profiles, matching Android's
+    /// age gate for live tiles.
+    func writeLiveFavorites() {
+        guard let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) else { return }
+        let rows = ProfileStore.shared.activeProfile.isKids ? [] : LiveFavoritesStore.shared.favorites.prefix(4).map {
+            WidgetLiveRow(channelID: $0.channelID, providerID: $0.providerID, title: $0.name, logo: $0.logo)
+        }
+        guard let data = try? JSONEncoder().encode(WidgetLiveSnapshot(rows: rows, updatedAt: Date())) else { return }
+        try? data.write(to: directory.appendingPathComponent(Self.liveFileName), options: .atomic)
+        WidgetCenter.shared.reloadTimelines(ofKind: Self.liveWidgetKind)
     }
 
     func write(_ library: LibraryStore) {

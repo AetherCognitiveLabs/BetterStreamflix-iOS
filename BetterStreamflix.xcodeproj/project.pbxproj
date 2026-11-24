@@ -44,6 +44,7 @@
 		4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */; };
 		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
 		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
+		952A78AC07377708FBFE330B /* LiveFavorites.swift in Sources */ = {isa = PBXBuildFile; fileRef = F24AFC7445BCBF5EA300BDDA /* LiveFavorites.swift */; };
 		5091B06E7C25137734C825F7 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */; };
 		4A542F398C7CCE2988129F0D /* MangaDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */; };
 		E92080160A081D34E0664132 /* MangaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */; };
@@ -116,6 +117,7 @@
 		20F27DA1DFBA474BB73159C3 /* StremioAddonsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */; };
 		7ADDA98E11AF42EEB0FAF2A5 /* StremioCatalogViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */; };
 		D543723BB15941669CF80D86 /* ContinueWatchingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */; };
+		0902516A1925041D64C25F44 /* LiveFavoritesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B8DF1BAE74393F488E7E77 /* LiveFavoritesWidget.swift */; };
 		C16DDB3FE07F354C0FCB09A2 /* BetterStreamflixWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -199,6 +201,7 @@
 		80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeStreamResolver.swift; sourceTree = "<group>"; };
 		8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityProvider.swift; sourceTree = "<group>"; };
 		92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VixcloudResolver.swift; sourceTree = "<group>"; };
+		F24AFC7445BCBF5EA300BDDA /* LiveFavorites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFavorites.swift; sourceTree = "<group>"; };
 		4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
 		32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaDownloads.swift; sourceTree = "<group>"; };
 		FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaLibrary.swift; sourceTree = "<group>"; };
@@ -264,6 +267,7 @@
 		CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonsSettingsView.swift; sourceTree = "<group>"; };
 		4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioCatalogViews.swift; sourceTree = "<group>"; };
 		4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueWatchingWidget.swift; sourceTree = "<group>"; };
+		D3B8DF1BAE74393F488E7E77 /* LiveFavoritesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFavoritesWidget.swift; sourceTree = "<group>"; };
 		3FFE24CC615047CA38F1AADA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A79911CE768715FDB70EEE77 /* BetterStreamflixWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BetterStreamflixWidget.entitlements; sourceTree = "<group>"; };
 		52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BetterStreamflixWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -351,6 +355,7 @@
 				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
 				1BDE955356AA93FC1945591F /* UserDataBackup.swift */,
 				92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */,
+				F24AFC7445BCBF5EA300BDDA /* LiveFavorites.swift */,
 				4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */,
 				32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */,
 				FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */,
@@ -452,6 +457,7 @@
 			isa = PBXGroup;
 			children = (
 				4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */,
+				D3B8DF1BAE74393F488E7E77 /* LiveFavoritesWidget.swift */,
 				3FFE24CC615047CA38F1AADA /* Info.plist */,
 				A79911CE768715FDB70EEE77 /* BetterStreamflixWidget.entitlements */,
 			);
@@ -647,6 +653,7 @@
 				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
 				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
 				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
+				952A78AC07377708FBFE330B /* LiveFavorites.swift in Sources */,
 				5091B06E7C25137734C825F7 /* WidgetSnapshot.swift in Sources */,
 				4A542F398C7CCE2988129F0D /* MangaDownloads.swift in Sources */,
 				E92080160A081D34E0664132 /* MangaLibrary.swift in Sources */,
@@ -690,6 +697,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D543723BB15941669CF80D86 /* ContinueWatchingWidget.swift in Sources */,
+				0902516A1925041D64C25F44 /* LiveFavoritesWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
