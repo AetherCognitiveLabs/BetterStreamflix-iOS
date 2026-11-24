@@ -37,6 +37,10 @@ final class CloudflareResolver: NSObject {
     /// cf_clearance usually lives 30 minutes; refresh a bit earlier.
     private static let clearanceLifetime: TimeInterval = 25 * 60
     private var clearances: [String: CloudflareClearance] = [:]
+    /// Hosts whose WebView run failed recently; they fail fast instead of
+    /// spending another full timeout on every request.
+    private var failures: [String: Date] = [:]
+    private static let failureCooldown: TimeInterval = 5 * 60
     private var inFlight: [String: Task<CloudflareClearance, Error>] = [:]
 
     // MARK: Challenge detection
@@ -55,6 +59,12 @@ final class CloudflareResolver: NSObject {
             return true
         }
         return statusCode == 403 || statusCode == 503
+    }
+
+    /// Cloudflare's firewall block page ("Sorry, you have been blocked"). Unlike a
+    /// challenge it never clears, so waiting in the WebView is pointless.
+    nonisolated static func isHardBlock(_ html: String) -> Bool {
+        html.contains("Sorry, you have been blocked") || html.contains("cf-error-details")
     }
 
     nonisolated static func defaultUsable(_ html: String) -> Bool {
@@ -151,12 +161,22 @@ final class CloudflareResolver: NSObject {
     ) async throws -> CloudflareClearance {
         let host = Self.hostKey(url) ?? url.absoluteString
         if let running = inFlight[host] { return try await running.value }
+        if let failedAt = failures[host], Date().timeIntervalSince(failedAt) < Self.failureCooldown {
+            throw AppError.providerUnavailable("Cloudflare check failed for \(host) recently")
+        }
         let task = Task { @MainActor in
             try await self.render(url, timeout: timeout, isUsable: isUsable)
         }
         inFlight[host] = task
         defer { inFlight[host] = nil }
-        let result = try await task.value
+        let result: CloudflareClearance
+        do {
+            result = try await task.value
+        } catch {
+            if !(error is CancellationError) { failures[host] = Date() }
+            throw error
+        }
+        failures[host] = nil
         clearances[host] = result
         Self.store(result, for: url)
         return result
@@ -204,6 +224,9 @@ final class CloudflareResolver: NSObject {
             let challenged = title.contains("Just a moment")
                 || title.contains("Attention Required")
                 || Self.isChallenge(statusCode: 200, html: html)
+            if Self.isHardBlock(html) {
+                throw AppError.providerUnavailable("Cloudflare blocked this connection")
+            }
             let cleared = cookies.contains { $0.name == "cf_clearance" }
             guard !html.isEmpty, (cleared && !challenged) || isUsable(html) else {
                 continue

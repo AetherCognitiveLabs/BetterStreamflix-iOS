@@ -508,7 +508,8 @@ struct MangaReaderView: View {
 // MARK: Images
 
 /// Image loader that sends the source's Referer/User-Agent, which most manga
-/// CDNs require.
+/// CDNs require. Hosts behind a Cloudflare check reuse the stored clearance
+/// (cookies + matching WebView user agent) and get one WebView pass on a block.
 final class MangaImageCache: @unchecked Sendable {
     static let shared = MangaImageCache()
     private let cache: NSCache<NSURL, UIImage> = {
@@ -521,15 +522,58 @@ final class MangaImageCache: @unchecked Sendable {
 
     func image(for url: URL, headers: [String: String]) async throws -> UIImage {
         if let image = cached(url) { return image }
+        let (data, _) = try await data(for: url, headers: headers)
+        guard let image = UIImage(data: data) else { throw AppError.decoding("Not an image") }
+        cache.setObject(image, forKey: url as NSURL, cost: data.count)
+        return image
+    }
+
+    /// Raw image bytes plus a file extension, for display and offline copies.
+    func data(for url: URL, headers: [String: String]) async throws -> (Data, String) {
+        if url.isFileURL {
+            return (try Data(contentsOf: url), url.pathExtension)
+        }
+        var merged = headers
+        if let clearance = await CloudflareResolver.shared.cachedClearance(for: url) {
+            merged.merge(clearance.headers) { _, cleared in cleared }
+        }
+        var (data, response) = try await fetch(url, headers: merged)
+        if Self.isBlocked(data: data, response: response) {
+            let clearance = try await CloudflareResolver.shared.clearance(for: url)
+            merged.merge(clearance.headers) { _, cleared in cleared }
+            (data, response) = try await fetch(url, headers: merged)
+        }
+        let status = response?.statusCode ?? 0
+        guard (200...299).contains(status) else { throw AppError.providerUnavailable("Image HTTP \(status)") }
+        return (data, Self.fileExtension(response: response, url: url))
+    }
+
+    private func fetch(_ url: URL, headers: [String: String]) async throws -> (Data, HTTPURLResponse?) {
         var request = URLRequest(url: url, timeoutInterval: 30)
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
         let (data, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200...299).contains(status), let image = UIImage(data: data) else {
-            throw AppError.providerUnavailable("Image HTTP \(status)")
+        return (data, response as? HTTPURLResponse)
+    }
+
+    private static func isBlocked(data: Data, response: HTTPURLResponse?) -> Bool {
+        let status = response?.statusCode ?? 0
+        let type = response?.value(forHTTPHeaderField: "Content-Type") ?? ""
+        guard status == 403 || status == 503 || type.contains("text/html") else { return false }
+        let text = String(decoding: data.prefix(64 * 1024), as: UTF8.self)
+        return CloudflareResolver.isChallenge(statusCode: status, html: text) && !CloudflareResolver.isHardBlock(text)
+            && (response?.value(forHTTPHeaderField: "Server")?.lowercased().contains("cloudflare") ?? true)
+    }
+
+    private static func fileExtension(response: HTTPURLResponse?, url: URL) -> String {
+        switch response?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "" {
+        case let type where type.contains("png"): return "png"
+        case let type where type.contains("webp"): return "webp"
+        case let type where type.contains("gif"): return "gif"
+        case let type where type.contains("jpeg"), let type where type.contains("jpg"): return "jpg"
+        default:
+            let ext = url.pathExtension.lowercased()
+            return ["jpg", "jpeg", "png", "webp", "gif"].contains(ext) ? ext : "jpg"
         }
-        cache.setObject(image, forKey: url as NSURL, cost: data.count)
-        return image
     }
 }
 
