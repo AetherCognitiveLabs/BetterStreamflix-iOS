@@ -44,6 +44,7 @@
 		4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */; };
 		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
 		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
+		5091B06E7C25137734C825F7 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */; };
 		4A542F398C7CCE2988129F0D /* MangaDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */; };
 		E92080160A081D34E0664132 /* MangaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */; };
 		9899DF876AC5E3108472FB9C /* MangaProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7A5614AB86E57071322AE0 /* MangaProviders.swift */; };
@@ -114,6 +115,8 @@
 		28127D9AD9574E78931EACEB /* StremioAddonStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */; };
 		20F27DA1DFBA474BB73159C3 /* StremioAddonsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */; };
 		7ADDA98E11AF42EEB0FAF2A5 /* StremioCatalogViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */; };
+		D543723BB15941669CF80D86 /* ContinueWatchingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */; };
+		C16DDB3FE07F354C0FCB09A2 /* BetterStreamflixWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -124,7 +127,28 @@
 			remoteGlobalIDString = 887543FE98EDDB51C0D26FB2;
 			remoteInfo = BetterStreamflix;
 		};
+		35AA029C81789AA145FD1C92 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7FD476A6B78E6892F5E407ED /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 15F91B2789E84C3EA6039CFB;
+			remoteInfo = BetterStreamflixWidget;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FA57E4488ED88ED39A42758B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C16DDB3FE07F354C0FCB09A2 /* BetterStreamflixWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		5631070F179E4CAE86A34B3F /* StremioAddonStoreBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonStoreBrowserView.swift; sourceTree = "<group>"; };
@@ -175,6 +199,7 @@
 		80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeStreamResolver.swift; sourceTree = "<group>"; };
 		8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityProvider.swift; sourceTree = "<group>"; };
 		92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VixcloudResolver.swift; sourceTree = "<group>"; };
+		4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
 		32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaDownloads.swift; sourceTree = "<group>"; };
 		FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaLibrary.swift; sourceTree = "<group>"; };
 		2E7A5614AB86E57071322AE0 /* MangaProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaProviders.swift; sourceTree = "<group>"; };
@@ -238,7 +263,21 @@
 		A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonStore.swift; sourceTree = "<group>"; };
 		CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonsSettingsView.swift; sourceTree = "<group>"; };
 		4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioCatalogViews.swift; sourceTree = "<group>"; };
+		4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueWatchingWidget.swift; sourceTree = "<group>"; };
+		3FFE24CC615047CA38F1AADA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A79911CE768715FDB70EEE77 /* BetterStreamflixWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BetterStreamflixWidget.entitlements; sourceTree = "<group>"; };
+		52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BetterStreamflixWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FE4DD4F14733D1BB0B0D55D8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		30B43768D32E64A9A5EDCA3D /* BetterStreamflixTests */ = {
@@ -264,6 +303,7 @@
 			children = (
 				DB48061975AD87F58267ABB3 /* BetterStreamflix.app */,
 				C1078DFACB04854902CB04AA /* BetterStreamflixTests.xctest */,
+				52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -311,6 +351,7 @@
 				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
 				1BDE955356AA93FC1945591F /* UserDataBackup.swift */,
 				92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */,
+				4241001FBD1FB4F8695AF636 /* WidgetSnapshot.swift */,
 				32BEBA64FBF790BD189D7CFA /* MangaDownloads.swift */,
 				FE72C8A17C3136CABC4D67AF /* MangaLibrary.swift */,
 				2E7A5614AB86E57071322AE0 /* MangaProviders.swift */,
@@ -346,6 +387,7 @@
 			children = (
 				76FBB74658D664F4F3F40A89 /* BetterStreamflix */,
 				30B43768D32E64A9A5EDCA3D /* BetterStreamflixTests */,
+				F3BDFB09399173DCA2894562 /* BetterStreamflixWidget */,
 				483BF04F79F6240146C6B63F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -406,6 +448,16 @@
 			path = Features;
 			sourceTree = "<group>";
 		};
+		F3BDFB09399173DCA2894562 /* BetterStreamflixWidget */ = {
+			isa = PBXGroup;
+			children = (
+				4E57D20BA342DF189196F956 /* ContinueWatchingWidget.swift */,
+				3FFE24CC615047CA38F1AADA /* Info.plist */,
+				A79911CE768715FDB70EEE77 /* BetterStreamflixWidget.entitlements */,
+			);
+			path = BetterStreamflixWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -415,10 +467,12 @@
 			buildPhases = (
 				41EE8B5767B0C17BE620D5EB /* Sources */,
 				D2CBC3C0A47F2DDAC075D2B2 /* Resources */,
+				FA57E4488ED88ED39A42758B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				052D714234A2534C8F4E44DA /* PBXTargetDependency */,
 			);
 			name = BetterStreamflix;
 			packageProductDependencies = (
@@ -444,6 +498,24 @@
 			productName = BetterStreamflixTests;
 			productReference = C1078DFACB04854902CB04AA /* BetterStreamflixTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		15F91B2789E84C3EA6039CFB /* BetterStreamflixWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC01392FF08C8D586B89C5F9 /* Build configuration list for PBXNativeTarget "BetterStreamflixWidget" */;
+			buildPhases = (
+				73F80DE61BFE62399C857BAF /* Sources */,
+				FE4DD4F14733D1BB0B0D55D8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BetterStreamflixWidget;
+			packageProductDependencies = (
+			);
+			productName = BetterStreamflixWidget;
+			productReference = 52BF4734CA7E8A9A55E0AAD3 /* BetterStreamflixWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -475,6 +547,7 @@
 			targets = (
 				887543FE98EDDB51C0D26FB2 /* BetterStreamflix */,
 				BCCFD8D037ED6DA65F70506A /* BetterStreamflixTests */,
+				15F91B2789E84C3EA6039CFB /* BetterStreamflixWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -574,6 +647,7 @@
 				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
 				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
 				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
+				5091B06E7C25137734C825F7 /* WidgetSnapshot.swift in Sources */,
 				4A542F398C7CCE2988129F0D /* MangaDownloads.swift in Sources */,
 				E92080160A081D34E0664132 /* MangaLibrary.swift in Sources */,
 				9899DF876AC5E3108472FB9C /* MangaProviders.swift in Sources */,
@@ -611,6 +685,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		73F80DE61BFE62399C857BAF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D543723BB15941669CF80D86 /* ContinueWatchingWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -618,6 +700,11 @@
 			isa = PBXTargetDependency;
 			target = 887543FE98EDDB51C0D26FB2 /* BetterStreamflix */;
 			targetProxy = 3A1F5677571FEAEEC349EA44 /* PBXContainerItemProxy */;
+		};
+		052D714234A2534C8F4E44DA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 15F91B2789E84C3EA6039CFB /* BetterStreamflixWidget */;
+			targetProxy = 35AA029C81789AA145FD1C92 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -839,6 +926,54 @@
 			};
 			name = Debug;
 		};
+		8BA0ED53CD40D8204D4E73E2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BetterStreamflixWidget/BetterStreamflixWidget.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = A97K2SS8D9;
+				INFOPLIST_FILE = BetterStreamflixWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios.widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AC20271671D3B2E2DBC78702 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BetterStreamflixWidget/BetterStreamflixWidget.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = A97K2SS8D9;
+				INFOPLIST_FILE = BetterStreamflixWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios.widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -865,6 +1000,15 @@
 			buildConfigurations = (
 				33385A60476E304021E1BEE4 /* Debug */,
 				C06002D0C3EF0D1741FEDF3F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AC01392FF08C8D586B89C5F9 /* Build configuration list for PBXNativeTarget "BetterStreamflixWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8BA0ED53CD40D8204D4E73E2 /* Debug */,
+				AC20271671D3B2E2DBC78702 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

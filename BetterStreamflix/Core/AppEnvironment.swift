@@ -413,6 +413,7 @@ final class AppEnvironment: ObservableObject {
         // Warm the Stremio addon store so curated defaults seed in the background.
         _ = StremioAddonStore.shared
         CloudSyncManager.shared.startAutoSync(library: library)
+        WidgetSnapshotWriter.shared.start(library: library)
         if ProcessInfo.processInfo.arguments.contains("-mangaSmoke") {
             Task.detached {
                 for line in await MangaCatalog.smoke() { print(line) }
