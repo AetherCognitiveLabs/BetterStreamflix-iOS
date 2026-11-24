@@ -112,6 +112,7 @@ final class ProfileStore: ObservableObject {
         activeProfileID = id
         UserDefaults.standard.set(id, forKey: Self.activeKey)
         library.switchDirectory(Self.libraryDirectory(for: id))
+        CloudSyncManager.shared.reloadForActiveProfile()
     }
 
     private func update(_ id: String, _ change: (inout UserProfile) -> Void) {
