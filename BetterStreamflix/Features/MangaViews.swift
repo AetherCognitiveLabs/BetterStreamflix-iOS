@@ -404,13 +404,13 @@ struct MangaReaderView: View {
     private var pagedReader: some View {
         TabView(selection: $currentPage) {
             ForEach(pages) { page in
-                MangaRemoteImage(url: page.imageURL, headers: page.headers, contentMode: .fit)
+                ZoomableMangaPage(page: page) { withAnimation { showsChrome.toggle() } }
+                    .ignoresSafeArea()
                     .tag(page.index)
             }
             chapterFooter.tag(pages.count)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .onTapGesture { withAnimation { showsChrome.toggle() } }
     }
 
     private var chapterFooter: some View {
@@ -502,6 +502,107 @@ struct MangaReaderView: View {
         guard !pages.isEmpty else { return }
         let page = min(currentPage, pages.count - 1)
         MangaLibrary.shared.save(manga: manga, chapter: chapter, pageIndex: page, finished: currentPage >= pages.count - 1)
+    }
+}
+
+// MARK: Zoom
+
+/// Paged-mode page: pinch or double-tap to zoom (up to 4x), pan while zoomed.
+/// At 1x the scroll view has nothing to scroll, so swipes still turn pages.
+struct ZoomableMangaPage: UIViewRepresentable {
+    let page: MangaPage
+    var onTap: () -> Void
+
+    func makeUIView(context: Context) -> ZoomableImageScrollView {
+        let view = ZoomableImageScrollView()
+        view.onTap = onTap
+        view.load(page)
+        return view
+    }
+
+    func updateUIView(_ view: ZoomableImageScrollView, context: Context) {
+        view.onTap = onTap
+        if view.pageURL != page.imageURL { view.load(page) }
+    }
+}
+
+final class ZoomableImageScrollView: UIScrollView, UIScrollViewDelegate {
+    private(set) var pageURL: URL?
+    var onTap: (() -> Void)?
+    private let imageView = UIImageView()
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private var loadTask: Task<Void, Never>?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        delegate = self
+        minimumZoomScale = 1
+        maximumZoomScale = 4
+        bouncesZoom = true
+        showsVerticalScrollIndicator = false
+        showsHorizontalScrollIndicator = false
+        contentInsetAdjustmentBehavior = .never
+        imageView.contentMode = .scaleAspectFit
+        addSubview(imageView)
+        spinner.color = .white
+        spinner.hidesWhenStopped = true
+        addSubview(spinner)
+
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        addGestureRecognizer(doubleTap)
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(handleSingleTap))
+        singleTap.require(toFail: doubleTap)
+        addGestureRecognizer(singleTap)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    deinit { loadTask?.cancel() }
+
+    func load(_ page: MangaPage) {
+        pageURL = page.imageURL
+        setZoomScale(1, animated: false)
+        loadTask?.cancel()
+        if let cached = MangaImageCache.shared.cached(page.imageURL) {
+            imageView.image = cached
+            spinner.stopAnimating()
+            return
+        }
+        imageView.image = nil
+        spinner.startAnimating()
+        let url = page.imageURL
+        loadTask = Task { @MainActor [weak self] in
+            let image = try? await MangaImageCache.shared.image(for: url, headers: page.headers)
+            guard let self, !Task.isCancelled, self.pageURL == url else { return }
+            self.spinner.stopAnimating()
+            self.imageView.image = image ?? UIImage(systemName: "exclamationmark.triangle")
+            self.imageView.tintColor = .gray
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if zoomScale == 1 {
+            imageView.frame = bounds
+            contentSize = bounds.size
+        }
+        spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+    @objc private func handleSingleTap() { onTap?() }
+
+    @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        if zoomScale > minimumZoomScale {
+            setZoomScale(minimumZoomScale, animated: true)
+            return
+        }
+        let scale: CGFloat = 2.5
+        let point = gesture.location(in: imageView)
+        let size = CGSize(width: bounds.width / scale, height: bounds.height / scale)
+        zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
     }
 }
 
