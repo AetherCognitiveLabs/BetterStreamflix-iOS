@@ -68,6 +68,14 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
+                            title: "Year in Review",
+                            subtitle: "Hours, top series & longest binge",
+                            systemImage: "chart.bar.fill"
+                        ) {
+                            path.append(MoreRoute.yearReview)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
                             title: "Live TV",
                             subtitle: "Pluto TV, Vavoo, sports & IPTV channels",
                             systemImage: "dot.radiowaves.left.and.right"
@@ -206,6 +214,8 @@ struct MoreView: View {
                     ProfilesView()
                 case .cloudSync:
                     CloudSyncView()
+                case .yearReview:
+                    YearReviewView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -373,7 +383,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles, cloudSync
+    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles, cloudSync, yearReview
 }
 
 private extension MoreView {

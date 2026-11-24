@@ -13,6 +13,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var progress: [WatchProgress] = []
     @Published private(set) var watchedEpisodes: Set<WatchedEpisode> = []
     @Published private(set) var customLists: [LibraryCustomList] = []
+    @Published private(set) var watchEvents: [WatchEvent] = []
 
     var completedSeriesRequests: [PlaybackRequest] {
         completedSeriesCheckpoints.values
@@ -300,6 +301,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func markFinished(request: PlaybackRequest, nextRequest: PlaybackRequest?) {
+        recordWatchEvent(request)
         if request.episode != nil {
             markWatched(request: request)
         } else {
@@ -311,6 +313,12 @@ final class LibraryStore: ObservableObject {
         } else if request.episode != nil {
             rememberCompletedSeries(request)
         }
+    }
+
+    private func recordWatchEvent(_ request: PlaybackRequest) {
+        watchEvents.append(WatchEvent(request: request))
+        if watchEvents.count > 5_000 { watchEvents.removeFirst(watchEvents.count - 5_000) }
+        save(watchEvents, to: "watch-events.json")
     }
 
     func markWatched(request: PlaybackRequest) {
@@ -461,6 +469,7 @@ final class LibraryStore: ObservableObject {
             }
         }
         customLists = read([LibraryCustomList].self, from: "custom-lists.json") ?? []
+        watchEvents = read([WatchEvent].self, from: "watch-events.json") ?? []
         watchedEpisodes = Set(read([WatchedEpisode].self, from: "watched-episodes.json") ?? [])
         let storedProgress = (read([WatchProgress].self, from: "progress.json") ?? [])
             .sorted { $0.updatedAt > $1.updatedAt }
