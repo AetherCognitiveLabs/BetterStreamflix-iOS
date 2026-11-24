@@ -9,6 +9,9 @@ enum MangaRoute: Hashable {
 
 struct MangaHomeView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    #if DEBUG
+    @State private var debugDetail: Manga?
+    #endif
     @ObservedObject private var library = MangaLibrary.shared
     @AppStorage("manga.providerID") private var providerID = MangaCatalog.all[0].id
     @State private var query = ""
@@ -64,6 +67,12 @@ struct MangaHomeView: View {
         .task(id: providerID) { await loadHome() }
         .task(id: "\(providerID)|\(trimmedQuery)") { await search() }
         .refreshable { await loadHome() }
+        #if DEBUG
+        .navigationDestination(item: $debugDetail) { MangaDetailView(manga: $0) }
+        .onChange(of: categories.first?.items.first) { _, first in
+            if ProcessInfo.processInfo.arguments.contains("-openMangaDetail"), debugDetail == nil { debugDetail = first }
+        }
+        #endif
         .navigationDestination(for: MangaRoute.self) { route in
             switch route {
             case .detail(let manga): MangaDetailView(manga: manga)
@@ -334,6 +343,7 @@ private struct MangaCover: View {
 // MARK: Chapters
 
 struct MangaDetailView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     let manga: Manga
     @ObservedObject private var library = MangaLibrary.shared
     @ObservedObject private var downloads = MangaDownloadManager.shared
@@ -347,93 +357,30 @@ struct MangaDetailView: View {
     private var saved: MangaProgress? { library.progress(for: manga) }
 
     var body: some View {
-        List {
-            Section {
-                HStack(alignment: .top, spacing: 14) {
-                    MangaCover(manga: current).frame(width: 110, height: 160)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(current.title).font(.title3.weight(.bold))
-                        if let author = current.author { Text(author).font(.subheadline).foregroundStyle(.secondary) }
-                        if let status = current.status { Text(status).font(.caption).foregroundStyle(.secondary) }
-                        Text(MangaCatalog.provider(id: current.providerID)?.name ?? current.providerID)
-                            .font(.caption).foregroundStyle(.secondary)
-                        if detail != nil {
-                            Text("\(current.chapters.count) chapters").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                hero
                 if let overview = current.overview {
-                    Text(overview).font(.callout).foregroundStyle(.secondary).lineLimit(8)
+                    Text(overview)
+                        .font(DesignTokens.Typography.body)
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(6)
+                        .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
                 }
-                if let detail, !detail.chapters.isEmpty {
-                    Button {
-                        openResume(detail)
-                    } label: {
-                        Label(resumeTitle(detail), systemImage: "book.fill").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-
-            if detail != nil {
-                Section {
-                    ForEach(chapters) { chapter in
-                        Button {
-                            open(chapter, page: saved?.chapterID == chapter.id ? saved?.pageIndex ?? 0 : 0)
-                        } label: {
-                            chapterRow(chapter)
-                        }
-                        .swipeActions {
-                            let read = library.isRead(chapter, in: current)
-                            Button(read ? "Unread" : "Read") {
-                                library.setRead(chapter, in: current, read: !read)
-                            }
-                            .tint(read ? .gray : .accentColor)
-                            if let download = downloads.item(current, chapter) {
-                                Button("Remove", role: .destructive) { downloads.remove(download.id) }
-                            } else {
-                                Button("Download") { downloads.download(chapter, of: current) }
-                                    .tint(.blue)
-                            }
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("Chapters")
-                        Spacer()
-                        Button(newestFirst ? "Newest first" : "Oldest first") { newestFirst.toggle() }
-                            .font(.caption)
-                            .textCase(nil)
-                    }
-                }
-            }
-        }
-        .navigationTitle(current.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if let detail, !detail.chapters.isEmpty {
-                    downloadMenu(detail)
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    library.toggleFavorite(current)
-                } label: {
-                    Image(systemName: library.isFavorite(current) ? "heart.fill" : "heart")
-                }
-                .accessibilityLabel(library.isFavorite(current) ? "Remove from favorites" : "Add to favorites")
-            }
-        }
-        .overlay {
-            if detail == nil {
-                if let errorText {
-                    ContentUnavailableView("Couldn't load chapters", systemImage: "exclamationmark.triangle", description: Text(errorText))
+                if let detail {
+                    chapterSection(detail)
                 } else {
-                    ProgressView()
+                    loadingState
                 }
             }
+            .padding(.bottom, 120)
         }
+        .scrollIndicators(.hidden)
+        .ignoresSafeArea(edges: .top)
+        .background { AppScreenBackground() }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task { await load() }
         .refreshable { await load() }
         .fullScreenCover(item: $reader) { target in
@@ -441,21 +388,204 @@ struct MangaDetailView: View {
         }
     }
 
-    private func chapterRow(_ chapter: MangaChapter) -> some View {
-        let read = library.isRead(chapter, in: current)
-        return HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(chapter.displayTitle)
-                    .foregroundStyle(read ? .secondary : .primary)
-                if saved?.chapterID == chapter.id, let page = saved?.pageIndex {
-                    Text("Page \(page + 1)").font(.caption).foregroundStyle(.tint)
+    private var hero: some View {
+        VStack(spacing: 16) {
+            MangaCover(manga: current)
+                .frame(width: 170, height: 255)
+                .shadow(color: .black.opacity(0.6), radius: 24, y: 12)
+                .padding(.top, 110)
+            VStack(spacing: 8) {
+                Text(current.title)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                metadataRow
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+            HStack(spacing: 10) {
+                Button {
+                    if let detail { openResume(detail) }
+                } label: {
+                    Label(detail.map(resumeTitle) ?? "Read", systemImage: "book.fill")
+                }
+                .buttonStyle(AppPrimaryButtonStyle(glow: environment.theme.accent, minHeight: 48, verticalPadding: 12))
+                .disabled(detail?.chapters.isEmpty ?? true)
+                circleButton(library.isFavorite(current) ? "heart.fill" : "heart",
+                             label: library.isFavorite(current) ? "Remove from favorites" : "Add to favorites",
+                             tinted: library.isFavorite(current)) {
+                    DesignTokens.Haptics.selection()
+                    library.toggleFavorite(current)
+                }
+                if let detail, !detail.chapters.isEmpty {
+                    downloadMenu(detail)
                 }
             }
-            Spacer()
-            downloadBadge(chapter)
-            if read { Image(systemName: "checkmark").foregroundStyle(.secondary) }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
         }
-        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            MangaCover(manga: current, cornerRadius: 0)
+                .frame(height: 460)
+                .frame(maxWidth: .infinity)
+                .blur(radius: 40)
+                .scaleEffect(1.25)
+                .opacity(0.55)
+                .overlay {
+                    LinearGradient(colors: [.black.opacity(0.2), .clear, AppTheme.background], startPoint: .top, endPoint: .bottom)
+                }
+                .clipped()
+        }
+    }
+
+    private var metadataRow: some View {
+        let parts = [
+            current.author,
+            current.status,
+            MangaCatalog.provider(id: current.providerID)?.name ?? current.providerID,
+            detail.map { "\($0.chapters.count) chapters" },
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        return Text(parts.joined(separator: "  ·  "))
+            .font(DesignTokens.Typography.metadata)
+            .foregroundStyle(.white.opacity(0.65))
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+    }
+
+    private func circleButton(_ systemImage: String, label: String, tinted: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tinted ? environment.theme.accentBright : .white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(AppTheme.surface))
+                .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    @ViewBuilder
+    private var loadingState: some View {
+        VStack(spacing: 10) {
+            if let errorText {
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 34, weight: .light))
+                    .foregroundStyle(environment.theme.accentBright)
+                Text("Couldn't load chapters").font(.headline).foregroundStyle(.white)
+                Text(errorText).font(.caption).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .padding(.horizontal, 32)
+    }
+
+    private func chapterSection(_ detail: Manga) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Chapters").font(DesignTokens.Typography.shelfTitle).foregroundStyle(.white)
+                Text("\(detail.chapters.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                Button {
+                    withAnimation(DesignTokens.Motion.soft) { newestFirst.toggle() }
+                } label: {
+                    Label(newestFirst ? "Newest" : "Oldest", systemImage: "arrow.up.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(environment.theme.accentBright)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+
+            LazyVStack(spacing: 0) {
+                ForEach(Array(chapters.enumerated()), id: \.element.id) { index, chapter in
+                    if index > 0 { Divider().overlay(AppTheme.border).padding(.leading, 16) }
+                    chapterRow(chapter)
+                }
+            }
+            .appSurface(cornerRadius: DesignTokens.Radius.card)
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+        }
+    }
+
+    private func chapterRow(_ chapter: MangaChapter) -> some View {
+        let read = library.isRead(chapter, in: current)
+        let isCurrent = saved?.chapterID == chapter.id
+        return HStack(spacing: 12) {
+            Button {
+                open(chapter, page: isCurrent ? saved?.pageIndex ?? 0 : 0)
+            } label: {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(isCurrent ? environment.theme.accentBright : (read ? Color.white.opacity(0.18) : Color.white.opacity(0.75)))
+                        .frame(width: 7, height: 7)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(chapter.displayTitle)
+                            .font(.subheadline.weight(read ? .regular : .semibold))
+                            .foregroundStyle(read ? .white.opacity(0.45) : .white)
+                            .lineLimit(1)
+                        if isCurrent, let page = saved?.pageIndex {
+                            Text("Continue on page \(page + 1)")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(environment.theme.accentBright)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            chapterDownloadButton(chapter)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+        .contextMenu {
+            Button(read ? "Mark as Unread" : "Mark as Read", systemImage: read ? "circle" : "checkmark.circle") {
+                library.setRead(chapter, in: current, read: !read)
+            }
+            if let download = downloads.item(current, chapter) {
+                Button("Remove Download", systemImage: "trash", role: .destructive) { downloads.remove(download.id) }
+            } else {
+                Button("Download", systemImage: "arrow.down.circle") { downloads.download(chapter, of: current) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func chapterDownloadButton(_ chapter: MangaChapter) -> some View {
+        if let download = downloads.item(current, chapter) {
+            switch download.state {
+            case .completed:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(environment.theme.accentBright)
+                    .accessibilityLabel("Downloaded")
+            case .queued, .downloading:
+                ZStack {
+                    Circle().stroke(.white.opacity(0.15), lineWidth: 2.5)
+                    Circle().trim(from: 0, to: max(0.04, download.progress))
+                        .stroke(environment.theme.accentBright, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 20, height: 20)
+                .accessibilityLabel("Downloading")
+            case .failed:
+                Button { downloads.download(chapter, of: current) } label: {
+                    Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry download")
+            }
+        } else {
+            Button { downloads.download(chapter, of: current) } label: {
+                Image(systemName: "arrow.down.circle").foregroundStyle(.white.opacity(0.55))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Download chapter")
+        }
     }
 
     private func downloadMenu(_ detail: Manga) -> some View {
@@ -475,25 +605,14 @@ struct MangaDetailView: View {
                 }
             }
         } label: {
-            Image(systemName: "arrow.down.circle")
+            Image(systemName: hasDownloads ? "arrow.down.circle.fill" : "arrow.down.to.line")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(AppTheme.surface))
+                .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
         }
         .accessibilityLabel("Download chapters")
-    }
-
-    @ViewBuilder
-    private func downloadBadge(_ chapter: MangaChapter) -> some View {
-        if let download = downloads.item(current, chapter) {
-            switch download.state {
-            case .completed:
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.secondary)
-                    .accessibilityLabel("Downloaded")
-            case .queued, .downloading:
-                ProgressView(value: download.progress).frame(width: 36)
-            case .failed:
-                Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
-                    .accessibilityLabel("Download failed")
-            }
-        }
     }
 
     private func resumeTitle(_ detail: Manga) -> String {
