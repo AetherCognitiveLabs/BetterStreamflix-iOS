@@ -3,6 +3,7 @@ import SwiftUI
 /// Live channel browser: one provider at a time, channels grouped into
 /// sections, searchable, tap to play with the channel's headers.
 struct LiveTVView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     private let providers = LiveTVProviders.all()
     @AppStorage("liveTV.providerID") private var providerID = M3UPlaylistLiveProvider.plutoTVDE.id
     @State private var groups: [LiveChannelGroup] = []
@@ -28,41 +29,45 @@ struct LiveTVView: View {
         }
     }
 
+    private var allChannels: [LiveChannel] { groups.flatMap(\.channels) }
+
+    /// Featured "On Now" cards: favourites first, then channels with guide data.
+    private var featured: [LiveChannel] {
+        let favoriteChannels = favorites.favorites.map(\.channel)
+        if !favoriteChannels.isEmpty { return Array(favoriteChannels.prefix(6)) }
+        let withGuide = allChannels.filter { $0.programNow != nil }
+        return Array((withGuide.isEmpty ? allChannels : withGuide).prefix(6))
+    }
+
     var body: some View {
-        List {
-            if !outageIDs.isEmpty {
-                Section { outageNotice }
-            }
-            if query.isEmpty, !favorites.favorites.isEmpty {
-                Section("Favorites · \(favorites.favorites.count)") {
-                    ForEach(favorites.favorites) { favorite in
-                        channelButton(favorite.channel)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 26) {
+                header
+                providerChips
+                if !outageIDs.isEmpty {
+                    outageNotice.padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+                }
+                if groups.isEmpty {
+                    statusView
+                } else if query.isEmpty {
+                    if !featured.isEmpty { featuredCarousel }
+                    if !favorites.favorites.isEmpty {
+                        channelShelf("Favorites", channels: favorites.favorites.map(\.channel))
                     }
+                    ForEach(groups) { group in
+                        channelShelf(group.name, channels: group.channels)
+                    }
+                } else {
+                    searchResults
                 }
             }
-            ForEach(visibleGroups) { group in
-                Section("\(group.name) · \(group.channels.count)") {
-                    ForEach(group.channels) { channel in
-                        channelButton(channel)
-                    }
-                }
-            }
+            .padding(.bottom, 120)
         }
-        .listStyle(.insetGrouped)
-        .overlay { statusOverlay }
+        .scrollIndicators(.hidden)
+        .background { AppScreenBackground() }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search channels")
-        .navigationTitle("Live TV")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Provider", selection: $providerID) {
-                        ForEach(providers, id: \.id) { Text($0.displayName).tag($0.id) }
-                    }
-                } label: {
-                    Label(provider.displayName, systemImage: "antenna.radiowaves.left.and.right")
-                }
-            }
-        }
         .task(id: providerID) { await load() }
         .refreshable { await load() }
         .fullScreenCover(item: $playing) { channel in
@@ -71,16 +76,120 @@ struct LiveTVView: View {
         }
     }
 
-    private func channelButton(_ channel: LiveChannel) -> some View {
-        let isFavorite = favorites.isFavorite(channel)
-        return Button { playing = channel } label: { LiveChannelRow(channel: channel, isFavorite: isFavorite) }
-            .buttonStyle(.plain)
-            .swipeActions {
-                Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash" : "star") {
-                    favorites.toggle(channel)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Live TV")
+                .font(.system(size: 38, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.55), radius: 12, y: 3)
+            Text(groups.isEmpty ? provider.displayName : "\(allChannels.count) channels · \(provider.displayName)")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(.white.opacity(0.6))
+                .contentTransition(.numericText())
+        }
+        .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+        .padding(.top, 4)
+    }
+
+    private var providerChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(providers, id: \.id) { source in
+                    let selected = source.id == providerID
+                    Button {
+                        DesignTokens.Haptics.selection()
+                        withAnimation(DesignTokens.Motion.soft) { providerID = source.id }
+                    } label: {
+                        Text(source.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(selected ? Color(hex: 0x11141C) : .white.opacity(0.85))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background {
+                                if selected {
+                                    Capsule().fill(environment.theme.accentBright)
+                                } else {
+                                    Capsule().fill(AppTheme.surface).overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .tint(.yellow)
             }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+        }
+    }
+
+    private var featuredCarousel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(favorites.favorites.isEmpty ? "On Now" : "Your Channels")
+                .font(DesignTokens.Typography.shelfTitle)
+                .foregroundStyle(.white)
+                .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(featured) { channel in
+                        channelButton(channel) {
+                            LiveFeaturedCard(channel: channel, accent: environment.theme.accent)
+                        }
+                        .containerRelativeFrame(.horizontal) { width, _ in width - 2 * DesignTokens.Spacing.screenHorizontal }
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .contentMargins(.horizontal, DesignTokens.Spacing.screenHorizontal, for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
+        }
+    }
+
+    private func channelShelf(_ title: String, channels: [LiveChannel]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(DesignTokens.Typography.shelfTitle).foregroundStyle(.white).lineLimit(1)
+                Spacer()
+                Text("\(channels.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(environment.theme.accentBright)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(channels) { channel in
+                        channelButton(channel) {
+                            LiveChannelTile(channel: channel, isFavorite: favorites.isFavorite(channel))
+                        }
+                    }
+                }
+                .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+            }
+        }
+    }
+
+    private var searchResults: some View {
+        let matches = visibleGroups.flatMap(\.channels)
+        return Group {
+            if matches.isEmpty {
+                emptyState(symbol: "magnifyingglass", title: "No channels for “\(query)”", message: nil)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 18) {
+                    ForEach(matches.prefix(200)) { channel in
+                        channelButton(channel) {
+                            LiveChannelTile(channel: channel, isFavorite: favorites.isFavorite(channel), width: nil)
+                        }
+                    }
+                }
+                .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+            }
+        }
+    }
+
+    private func channelButton<Label: View>(_ channel: LiveChannel, @ViewBuilder label: () -> Label) -> some View {
+        let isFavorite = favorites.isFavorite(channel)
+        return Button {
+            DesignTokens.Haptics.selection()
+            playing = channel
+        } label: { label() }
+            .buttonStyle(PressablePosterButtonStyle())
             .contextMenu {
                 Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
                     favorites.toggle(channel)
@@ -89,38 +198,68 @@ struct LiveTVView: View {
     }
 
     @ViewBuilder
-    private var statusOverlay: some View {
-        if groups.isEmpty {
-            if isLoading {
-                ProgressView("Loading \(provider.displayName)…")
-            } else if let errorMessage {
-                VStack(spacing: 10) {
-                    Image(systemName: "antenna.radiowaves.left.and.right.slash").font(.largeTitle)
-                    Text(errorMessage).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                    Button("Retry") { Task { await load() } }.buttonStyle(.bordered)
-                }
-                .padding()
+    private var statusView: some View {
+        if isLoading {
+            VStack(spacing: 12) {
+                ProgressView().tint(.white)
+                Text("Loading \(provider.displayName)…").font(DesignTokens.Typography.caption).foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 80)
+        } else if let errorMessage {
+            emptyState(symbol: "antenna.radiowaves.left.and.right.slash", title: "No signal", message: errorMessage, retry: true)
+        }
+    }
+
+    private func emptyState(symbol: String, title: String, message: String?, retry: Bool = false) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(environment.theme.accentBright)
+            Text(title).font(.headline).foregroundStyle(.white)
+            if let message {
+                Text(message).font(.caption).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
+            }
+            if retry {
+                Button("Try Again") { Task { await load() } }
+                    .buttonStyle(AppPrimaryButtonStyle(glow: environment.theme.accent, minHeight: 44, verticalPadding: 10))
+                    .frame(width: 180)
+                    .padding(.top, 6)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+        .padding(.horizontal, 32)
     }
 
     private var outageNotice: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title3)
+                .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 4) {
                 Text(outageIDs.count == 1 ? "Provider unavailable" : "\(outageIDs.count) providers unavailable")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
                 Text(outageIDs.map(displayName(for:)).joined(separator: ", "))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.6))
             }
             Spacer()
-            Button("Dismiss") {
-                ProviderOutagePolicy.dismiss()
-                outageIDs = []
+            Button {
+                withAnimation(DesignTokens.Motion.soft) {
+                    ProviderOutagePolicy.dismiss()
+                    outageIDs = []
+                }
+            } label: {
+                Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 28, height: 28).background(Circle().fill(.white.opacity(0.08)))
             }
-            .font(.caption.weight(.semibold))
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
+        .padding(14)
+        .appSurface(cornerRadius: DesignTokens.Radius.card)
     }
 
     private func displayName(for id: String) -> String {
@@ -168,33 +307,116 @@ struct LiveTVView: View {
     }
 }
 
-private struct LiveChannelRow: View {
+/// Channel logo on a dark glass tile, the live-TV counterpart of a poster card.
+private struct LiveChannelTile: View {
     let channel: LiveChannel
     var isFavorite = false
+    var width: CGFloat? = 156
 
     var body: some View {
-        HStack(spacing: 12) {
-            AsyncImage(url: channel.logo) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFit()
-                } else {
-                    Image(systemName: "tv").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            LiveLogoPlate(channel: channel, logoPadding: 18)
+                .aspectRatio(16 / 10, contentMode: .fit)
+                .frame(width: width)
+                .overlay(alignment: .topLeading) {
+                    if channel.programNow != nil { LiveBadge().padding(8) }
                 }
-            }
-            .frame(width: 52, height: 32)
+                .overlay(alignment: .topTrailing) {
+                    if isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.yellow)
+                            .padding(8)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
-                Text(channel.name).font(.body.weight(.medium)).lineLimit(1)
+                Text(channel.name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(channel.programNow ?? channel.group ?? " ")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(1)
+            }
+            .frame(width: width, alignment: .leading)
+            .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+        }
+    }
+}
+
+/// Wide featured card: blurred logo glow, big logo, now/next.
+private struct LiveFeaturedCard: View {
+    let channel: LiveChannel
+    let accent: Color
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(colors: [accent.opacity(0.55), AppTheme.surface], startPoint: .topTrailing, endPoint: .bottomLeading)
+            LiveLogoImage(url: channel.logo)
+                .frame(width: 150, height: 84)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(22)
+                .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
+            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 6) {
+                LiveBadge()
+                Text(channel.name)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
                 if let now = channel.programNow {
-                    Text("Now: \(now)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(now).font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 }
                 if let next = channel.programNext {
-                    Text("Next: \(next)").font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                    Text("Next · \(next)").font(.caption).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
-            if isFavorite { Image(systemName: "star.fill").foregroundStyle(.yellow).font(.caption) }
-            Image(systemName: "play.circle.fill").foregroundStyle(.secondary)
+            .padding(18)
         }
-        .contentShape(Rectangle())
+        .frame(height: 196)
+        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.sheet, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.sheet, style: .continuous).stroke(.white.opacity(0.1), lineWidth: 1))
+    }
+}
+
+private struct LiveLogoPlate: View {
+    let channel: LiveChannel
+    var logoPadding: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(LinearGradient(colors: [Color(hex: 0x1D2230), Color(hex: 0x10131B)], startPoint: .top, endPoint: .bottom))
+            .overlay { LiveLogoImage(url: channel.logo).padding(logoPadding) }
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1))
+    }
+}
+
+private struct LiveLogoImage: View {
+    let url: URL?
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            if let image = phase.image {
+                image.resizable().scaledToFit()
+            } else {
+                Image(systemName: "tv")
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+    }
+}
+
+private struct LiveBadge: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle().fill(.white).frame(width: 5, height: 5)
+            Text("LIVE").font(.system(size: 10, weight: .heavy)).tracking(0.6)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color(hex: 0xE5383B)))
     }
 }
