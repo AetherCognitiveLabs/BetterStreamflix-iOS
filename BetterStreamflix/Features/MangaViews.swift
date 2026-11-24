@@ -12,6 +12,7 @@ struct MangaHomeView: View {
     #if DEBUG
     @State private var debugDetail: Manga?
     #endif
+    var isTabRoot = false
     @ObservedObject private var library = MangaLibrary.shared
     @AppStorage("manga.providerID") private var providerID = MangaCatalog.all[0].id
     @State private var query = ""
@@ -27,6 +28,8 @@ struct MangaHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 header
+                AppInlineSearchField(text: $query, prompt: "Search \(provider.name)")
+                    .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
                 sourceChips
                 if trimmedQuery.isEmpty {
                     if let hero = categories.first?.items.first {
@@ -63,7 +66,7 @@ struct MangaHomeView: View {
         .background { AppScreenBackground() }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search \(provider.name)")
+        .toolbar(isTabRoot ? .hidden : .automatic, for: .navigationBar)
         .task(id: providerID) { await loadHome() }
         .task(id: "\(providerID)|\(trimmedQuery)") { await search() }
         .refreshable { await loadHome() }

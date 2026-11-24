@@ -618,3 +618,38 @@ struct HeroGlassClusterModifier: ViewModifier {
             }
     }
 }
+
+/// Capsule search field used inside scrolling screens instead of a navigation-bar drawer.
+struct AppInlineSearchField: View {
+    @Binding var text: String
+    let prompt: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.55))
+            TextField(prompt, text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($focused)
+                .foregroundStyle(.white)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(Capsule().fill(AppTheme.surface))
+        .overlay(Capsule().stroke(focused ? Color.white.opacity(0.28) : AppTheme.border, lineWidth: 1))
+        .animation(.easeOut(duration: 0.16), value: focused)
+    }
+}

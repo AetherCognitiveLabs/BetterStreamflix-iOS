@@ -2,12 +2,13 @@ import SwiftUI
 
 struct RootView: View {
     private enum Tab: Hashable {
-        case home, movies, series, library, live, more
+        case home, movies, series, library, live, manga, more
     }
 
     @EnvironmentObject private var environment: AppEnvironment
-    /// Live TV lives under More; set `liveTV.showTab` to true to also show it as a tab.
-    @AppStorage("liveTV.showTab") private var showsLiveTab = false
+    /// Middle tab-bar slots, picked on the More screen (see `TabBarSlots`).
+    @AppStorage(TabBarSlots.storageKey) private var tabSlotsRaw = TabBarSlots.defaultValue
+    private var tabSlots: [TabBarDestination] { TabBarSlots.parse(tabSlotsRaw) }
     @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -171,6 +172,7 @@ struct RootView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(Tab.home)
 
+            if tabSlots.contains(.movies) {
             NavigationStack {
                 CatalogView(
                     kind: .movie,
@@ -181,7 +183,9 @@ struct RootView: View {
             .environment(\.titleTransitionSelection, movieTitleTransitionSelection)
             .tabItem { Label("Movies", systemImage: "film.fill") }
             .tag(Tab.movies)
+            }
 
+            if tabSlots.contains(.series) {
             NavigationStack {
                 CatalogView(
                     kind: .series,
@@ -192,17 +196,26 @@ struct RootView: View {
             .environment(\.titleTransitionSelection, seriesTitleTransitionSelection)
             .tabItem { Label("Series", systemImage: "tv.fill") }
             .tag(Tab.series)
+            }
 
-            NavigationStack { LibraryView() }
-                .environment(\.titleTransitionNamespace, libraryTitleTransitionNamespace)
-                .environment(\.titleTransitionSelection, libraryTitleTransitionSelection)
-                .tabItem { Label("Library", systemImage: "bookmark.fill") }
-                .tag(Tab.library)
+            if tabSlots.contains(.library) {
+                NavigationStack { LibraryView() }
+                    .environment(\.titleTransitionNamespace, libraryTitleTransitionNamespace)
+                    .environment(\.titleTransitionSelection, libraryTitleTransitionSelection)
+                    .tabItem { Label(TabBarDestination.library.title, systemImage: TabBarDestination.library.systemImage) }
+                    .tag(Tab.library)
+            }
 
-            if showsLiveTab {
-                NavigationStack { LiveTVView() }
-                    .tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
+            if tabSlots.contains(.live) {
+                NavigationStack { LiveTVView(isTabRoot: true) }
+                    .tabItem { Label(TabBarDestination.live.title, systemImage: TabBarDestination.live.systemImage) }
                     .tag(Tab.live)
+            }
+
+            if tabSlots.contains(.manga) {
+                NavigationStack { MangaHomeView(isTabRoot: true) }
+                    .tabItem { Label(TabBarDestination.manga.title, systemImage: TabBarDestination.manga.systemImage) }
+                    .tag(Tab.manga)
             }
 
             MoreView(onOpenSearch: { isSearchPresented = true })
@@ -270,6 +283,8 @@ struct RootView: View {
         case "movies": selectedTab = .movies
         case "series": selectedTab = .series
         case "library": selectedTab = .library
+        case "live": selectedTab = .live
+        case "manga": selectedTab = .manga
         case "more": selectedTab = .more
         default: break
         }
@@ -282,6 +297,10 @@ struct RootView: View {
     #endif
 
     private func openLiveHub() {
+        if tabSlots.contains(.live) {
+            selectedTab = .live
+            return
+        }
         selectedTab = .more
         UserDefaults.standard.set("liveTV", forKey: "stremio.shortcut.moreRoute.v1")
         NotificationCenter.default.post(name: Notification.Name("stremio.shortcut.moreRoute"), object: "liveTV")
@@ -334,5 +353,56 @@ struct RootView: View {
         } catch {
             // Launch continues normally when the public feed cannot be queried.
         }
+    }
+}
+
+/// Destinations that can occupy the middle tab-bar slots between Home and More.
+enum TabBarDestination: String, CaseIterable, Identifiable {
+    case movies, series, library, live, manga
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .movies: "Movies"
+        case .series: "Series"
+        case .library: "Library"
+        case .live: "Live"
+        case .manga: "Manga"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .movies: "film.fill"
+        case .series: "tv.fill"
+        case .library: "bookmark.fill"
+        case .live: "dot.radiowaves.left.and.right"
+        case .manga: "book.pages.fill"
+        }
+    }
+}
+
+/// iPhone tab bars overflow into a system "More" tab past five items, so
+/// Home + More leave three configurable slots.
+enum TabBarSlots {
+    static let storageKey = "tabBar.slots.v1"
+    static let maxSlots = 3
+    static let defaultValue = "movies,series,library"
+
+    static func parse(_ raw: String) -> [TabBarDestination] {
+        let picked = raw.split(separator: ",").compactMap { TabBarDestination(rawValue: String($0)) }
+        let ordered = TabBarDestination.allCases.filter(picked.contains)
+        return Array(ordered.prefix(maxSlots))
+    }
+
+    static func toggled(_ destination: TabBarDestination, in raw: String) -> String {
+        var slots = parse(raw)
+        if let index = slots.firstIndex(of: destination) {
+            slots.remove(at: index)
+        } else if slots.count < maxSlots {
+            slots.append(destination)
+        }
+        return slots.map(\.rawValue).joined(separator: ",")
     }
 }

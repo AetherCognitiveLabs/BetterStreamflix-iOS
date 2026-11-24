@@ -4,6 +4,7 @@ import SwiftUI
 struct MoreView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var path = NavigationPath()
+    @AppStorage(TabBarSlots.storageKey) private var tabSlotsRaw = TabBarSlots.defaultValue
     @State private var isCheckingForUpdates = false
     @State private var updateCheckResult: UpdateCheckResult?
     @State private var showCredits = false
@@ -17,6 +18,12 @@ struct MoreView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     PageTitleHeader(title: "More", ignoresTopSafeArea: true)
+
+                    exploreCards
+                        .padding(.horizontal, 20)
+
+                    tabBarCard
+                        .padding(.horizontal, 20)
 
                     hubCard {
                         hubRow(
@@ -81,22 +88,6 @@ struct MoreView: View {
                             systemImage: "stethoscope"
                         ) {
                             path.append(MoreRoute.diagnostics)
-                        }
-                        Divider().opacity(0.35)
-                        hubRow(
-                            title: "Live TV",
-                            subtitle: "Pluto TV, Vavoo, sports & IPTV channels",
-                            systemImage: "dot.radiowaves.left.and.right"
-                        ) {
-                            path.append(MoreRoute.liveTV)
-                        }
-                        Divider().opacity(0.35)
-                        hubRow(
-                            title: "Manga",
-                            subtitle: "MangaFreak, FlameComics, WeebCentral & more",
-                            systemImage: "book.pages"
-                        ) {
-                            path.append(MoreRoute.manga)
                         }
                         Divider().opacity(0.35)
                         hubRow(
@@ -328,6 +319,111 @@ struct MoreView: View {
         case .resume:
             break
         }
+    }
+
+    private var exploreCards: some View {
+        HStack(spacing: 12) {
+            exploreCard(
+                title: "Live TV",
+                subtitle: "\(LiveTVProviders.all().count) sources · Pluto, Vavoo, IPTV",
+                systemImage: "dot.radiowaves.left.and.right",
+                colors: [Color(hex: 0xE5383B), Color(hex: 0x5A1220)]
+            ) { path.append(MoreRoute.liveTV) }
+            exploreCard(
+                title: "Manga",
+                subtitle: "\(MangaCatalog.all.count) sources · read offline",
+                systemImage: "book.pages.fill",
+                colors: [Color(hex: 0x765BFF), Color(hex: 0x241A5C)]
+            ) { path.append(MoreRoute.manga) }
+        }
+    }
+
+    private func exploreCard(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        colors: [Color],
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Spacer(minLength: 0)
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+            .background {
+                ZStack(alignment: .topTrailing) {
+                    LinearGradient(colors: colors, startPoint: .topTrailing, endPoint: .bottomLeading)
+                    Image(systemName: systemImage)
+                        .font(.system(size: 64, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.22))
+                        .rotationEffect(.degrees(-8))
+                        .offset(x: 10, y: -4)
+                        .padding(14)
+                    LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+            .shadow(color: colors[0].opacity(0.35), radius: 14, y: 6)
+        }
+        .buttonStyle(PressablePosterButtonStyle())
+    }
+
+    private var tabBarCard: some View {
+        let slots = TabBarSlots.parse(tabSlotsRaw)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Tab Bar").font(.headline.weight(.semibold)).foregroundStyle(AppTheme.primaryText)
+                Spacer()
+                Text("\(slots.count) of \(TabBarSlots.maxSlots)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                ForEach(TabBarDestination.allCases) { destination in
+                    let selected = slots.contains(destination)
+                    let full = !selected && slots.count >= TabBarSlots.maxSlots
+                    Button {
+                        DesignTokens.Haptics.selection()
+                        withAnimation(DesignTokens.Motion.soft) {
+                            tabSlotsRaw = TabBarSlots.toggled(destination, in: tabSlotsRaw)
+                        }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: destination.systemImage)
+                                .font(.system(size: 17, weight: .semibold))
+                            Text(destination.title)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .foregroundStyle(selected ? Color(hex: 0x11141C) : .white.opacity(full ? 0.3 : 0.8))
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .background {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(selected ? AnyShapeStyle(environment.theme.accentBright) : AnyShapeStyle(Color.white.opacity(0.06)))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(full)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            Text("Pick three destinations to show between Home and More.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .glassEffectWithFallback(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func hubCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

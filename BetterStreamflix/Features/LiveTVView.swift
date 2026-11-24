@@ -13,6 +13,7 @@ struct LiveTVView: View {
     @State private var playing: LiveChannel?
     @State private var outageIDs: [String] = []
     @ObservedObject private var favorites = LiveFavoritesStore.shared
+    var isTabRoot = false
 
     private var provider: any LiveTVProvider {
         providers.first { $0.id == providerID } ?? providers[0]
@@ -43,6 +44,8 @@ struct LiveTVView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 26) {
                 header
+                AppInlineSearchField(text: $query, prompt: "Search channels")
+                    .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
                 providerChips
                 if !outageIDs.isEmpty {
                     outageNotice.padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
@@ -67,7 +70,7 @@ struct LiveTVView: View {
         .background { AppScreenBackground() }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, prompt: "Search channels")
+        .toolbar(isTabRoot ? .hidden : .automatic, for: .navigationBar)
         .task(id: providerID) { await load() }
         .refreshable { await load() }
         .fullScreenCover(item: $playing) { channel in
