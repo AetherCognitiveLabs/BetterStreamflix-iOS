@@ -92,6 +92,14 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
+                            title: "Manga",
+                            subtitle: "MangaFreak, FlameComics, WeebCentral & more",
+                            systemImage: "book.pages"
+                        ) {
+                            path.append(MoreRoute.manga)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
                             title: "Stremio",
                             subtitle: addonHubSubtitle,
                             systemImage: "puzzlepiece.extension.fill"
@@ -218,6 +226,8 @@ struct MoreView: View {
                     StremioDebridSettingsView()
                 case .liveTV:
                     LiveTVView()
+                case .manga:
+                    MangaHomeView()
                 case .profiles:
                     ProfilesView()
                 case .cloudSync:
@@ -393,7 +403,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles, cloudSync, yearReview, diagnostics
+    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, manga, profiles, cloudSync, yearReview, diagnostics
 }
 
 private extension MoreView {

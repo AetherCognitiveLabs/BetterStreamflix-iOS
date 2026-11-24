@@ -413,6 +413,12 @@ final class AppEnvironment: ObservableObject {
         // Warm the Stremio addon store so curated defaults seed in the background.
         _ = StremioAddonStore.shared
         CloudSyncManager.shared.startAutoSync(library: library)
+        if ProcessInfo.processInfo.arguments.contains("-mangaSmoke") {
+            Task.detached {
+                for line in await MangaCatalog.smoke() { print(line) }
+                print("MANGA done")
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-providerSmoke") {
             let registry = registry
             Task.detached {
