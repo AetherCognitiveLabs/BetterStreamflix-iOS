@@ -76,6 +76,14 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
+                            title: "Provider Diagnostics",
+                            subtitle: "Smoke-test providers & health",
+                            systemImage: "stethoscope"
+                        ) {
+                            path.append(MoreRoute.diagnostics)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
                             title: "Live TV",
                             subtitle: "Pluto TV, Vavoo, sports & IPTV channels",
                             systemImage: "dot.radiowaves.left.and.right"
@@ -216,6 +224,8 @@ struct MoreView: View {
                     CloudSyncView()
                 case .yearReview:
                     YearReviewView()
+                case .diagnostics:
+                    ProviderDiagnosticsView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -383,7 +393,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles, cloudSync, yearReview
+    case settings, library, stremioHub, stremioSettings, stremioDebrid, liveTV, profiles, cloudSync, yearReview, diagnostics
 }
 
 private extension MoreView {

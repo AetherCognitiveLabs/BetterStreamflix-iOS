@@ -413,6 +413,17 @@ final class AppEnvironment: ObservableObject {
         // Warm the Stremio addon store so curated defaults seed in the background.
         _ = StremioAddonStore.shared
         CloudSyncManager.shared.startAutoSync(library: library)
+        if ProcessInfo.processInfo.arguments.contains("-providerSmoke") {
+            let registry = registry
+            Task.detached {
+                let (report, results) = await ProviderSmoke.run(registry: registry)
+                print("SMOKE registry total=\(report.totalProviders) duplicates=\(report.duplicateIDs) missing=\(report.missingSmokeTargets)")
+                for result in results.sorted(by: { $0.id < $1.id }) {
+                    print("SMOKE \(result.ok ? "PASS" : "FAIL") \(result.id) items=\(result.itemCount) \(String(format: "%.1f", result.duration))s \(result.message ?? "")")
+                }
+                print("SMOKE done pass=\(results.filter(\.ok).count)/\(results.count)")
+            }
+        }
     }
 
     private static func importBundledTMDBAccessTokenIfNeeded(into credentials: TMDBCredentialStore) {

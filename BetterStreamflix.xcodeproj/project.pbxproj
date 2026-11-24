@@ -98,6 +98,7 @@
 		A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */; };
 		A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */; };
 		A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220004 /* MoreView.swift */; };
+		07D513FDA2A7B9FC9C141612 /* ProviderDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D47BA8AB2F9FC7F2AEC722 /* ProviderDiagnosticsView.swift */; };
 		14FDE79373706AB7D5CD2FEC /* YearReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23ACEFF8895FD850FD8157EE /* YearReviewView.swift */; };
 		47071C7EDD27A2C128385B5A /* CloudSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C22680D684A0767DE9C72D /* CloudSyncView.swift */; };
 		3BEE7F8B41223C538FEAEB95 /* DownloadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C818F91DFC7B8CD970980CB3 /* DownloadsListView.swift */; };
@@ -217,6 +218,7 @@
 		A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistFeedback.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonProfileView.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220004 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
+		97D47BA8AB2F9FC7F2AEC722 /* ProviderDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDiagnosticsView.swift; sourceTree = "<group>"; };
 		23ACEFF8895FD850FD8157EE /* YearReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YearReviewView.swift; sourceTree = "<group>"; };
 		D8C22680D684A0767DE9C72D /* CloudSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncView.swift; sourceTree = "<group>"; };
 		C818F91DFC7B8CD970980CB3 /* DownloadsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsListView.swift; sourceTree = "<group>"; };
@@ -369,6 +371,7 @@
 				A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */,
 				A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */,
 				A1F82C4E9B7D4011AA220004 /* MoreView.swift */,
+				97D47BA8AB2F9FC7F2AEC722 /* ProviderDiagnosticsView.swift */,
 				23ACEFF8895FD850FD8157EE /* YearReviewView.swift */,
 				D8C22680D684A0767DE9C72D /* CloudSyncView.swift */,
 				C818F91DFC7B8CD970980CB3 /* DownloadsListView.swift */,
@@ -521,6 +524,7 @@
 				A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */,
 				A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */,
 				A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */,
+				07D513FDA2A7B9FC9C141612 /* ProviderDiagnosticsView.swift in Sources */,
 				14FDE79373706AB7D5CD2FEC /* YearReviewView.swift in Sources */,
 				47071C7EDD27A2C128385B5A /* CloudSyncView.swift in Sources */,
 				3BEE7F8B41223C538FEAEB95 /* DownloadsListView.swift in Sources */,
