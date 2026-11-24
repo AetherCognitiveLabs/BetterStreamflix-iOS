@@ -308,9 +308,13 @@ struct MoreView: View {
     }
 
     private func applyShortcutRoute(_ raw: String?) {
-        if raw == "liveTV" {
+        let named: [String: MoreRoute] = [
+            "liveTV": .liveTV, "manga": .manga, "profiles": .profiles, "cloudSync": .cloudSync,
+            "yearReview": .yearReview, "diagnostics": .diagnostics, "library": .library, "settings": .settings,
+        ]
+        if let raw, let route = named[raw] {
             UserDefaults.standard.removeObject(forKey: "stremio.shortcut.moreRoute.v1")
-            if path.isEmpty { path.append(MoreRoute.liveTV) }
+            if path.isEmpty { path.append(route) }
             return
         }
         guard let raw, let route = StremioShortcutBridge.Route(rawValue: raw) else { return }

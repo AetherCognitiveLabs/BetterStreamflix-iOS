@@ -8,6 +8,7 @@ enum MangaRoute: Hashable {
 // MARK: Browser
 
 struct MangaHomeView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @ObservedObject private var library = MangaLibrary.shared
     @AppStorage("manga.providerID") private var providerID = MangaCatalog.all[0].id
     @State private var query = ""
@@ -20,52 +21,46 @@ struct MangaHomeView: View {
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        List {
-            if trimmedQuery.isEmpty {
-                if !library.progress.isEmpty {
-                    Section("Continue Reading") {
-                        MangaCoverRow(items: library.progress.map(\.manga)) { manga in
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                header
+                sourceChips
+                if trimmedQuery.isEmpty {
+                    if let hero = categories.first?.items.first {
+                        MangaHeroCard(manga: hero, caption: categories.first?.name ?? "Featured", providerName: provider.name)
+                            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+                    }
+                    if !library.progress.isEmpty {
+                        MangaShelf(title: "Continue Reading", items: library.progress.map(\.manga)) { manga in
                             library.progress(for: manga)?.chapterTitle
                         }
                     }
-                }
-                if !library.favorites.isEmpty {
-                    Section("Favorites") { MangaCoverRow(items: library.favorites) }
-                }
-                ForEach(categories) { category in
-                    Section("\(category.name) · \(provider.name)") { MangaCoverRow(items: category.items) }
-                }
-            } else {
-                Section("Results · \(provider.name)") {
-                    ForEach(results) { manga in
-                        NavigationLink(value: MangaRoute.detail(manga)) { MangaListRow(manga: manga) }
+                    if !library.favorites.isEmpty {
+                        MangaShelf(title: "Favorites", items: library.favorites)
                     }
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle("Manga")
-        .searchable(text: $query, prompt: "Search \(provider.name)")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Source", selection: $providerID) {
-                        ForEach(MangaCatalog.all, id: \.id) { Text($0.name).tag($0.id) }
+                    ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
+                        MangaShelf(title: category.name, items: index == 0 ? Array(category.items.dropFirst()) : category.items)
                     }
-                } label: {
-                    Label(provider.name, systemImage: "books.vertical")
+                    if categories.isEmpty { statusView }
+                } else if results.isEmpty {
+                    statusView
+                } else {
+                    LazyVGrid(columns: MediaArtworkLayout.gridColumns, spacing: 18) {
+                        ForEach(results) { manga in
+                            NavigationLink(value: MangaRoute.detail(manga)) { MangaGridCard(manga: manga) }
+                                .buttonStyle(PressablePosterButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, MediaArtworkLayout.gridHorizontalPadding)
                 }
             }
+            .padding(.bottom, 120)
         }
-        .overlay {
-            if isLoading && categories.isEmpty && results.isEmpty {
-                ProgressView()
-            } else if let errorText, categories.isEmpty, results.isEmpty {
-                ContentUnavailableView("Couldn't load \(provider.name)", systemImage: "exclamationmark.triangle", description: Text(errorText))
-            } else if !trimmedQuery.isEmpty, results.isEmpty, !isLoading {
-                ContentUnavailableView.search(text: trimmedQuery)
-            }
-        }
+        .scrollIndicators(.hidden)
+        .background { AppScreenBackground() }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search \(provider.name)")
         .task(id: providerID) { await loadHome() }
         .task(id: "\(providerID)|\(trimmedQuery)") { await search() }
         .refreshable { await loadHome() }
@@ -74,6 +69,71 @@ struct MangaHomeView: View {
             case .detail(let manga): MangaDetailView(manga: manga)
             }
         }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Manga")
+                .font(.system(size: 38, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.55), radius: 12, y: 3)
+            Text(trimmedQuery.isEmpty ? "Read chapters from \(MangaCatalog.all.count) sources" : "Results from \(provider.name)")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+        .padding(.top, 4)
+    }
+
+    private var sourceChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(MangaCatalog.all, id: \.id) { source in
+                    let selected = source.id == providerID
+                    Button {
+                        DesignTokens.Haptics.selection()
+                        withAnimation(DesignTokens.Motion.soft) { providerID = source.id }
+                    } label: {
+                        Text(source.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(selected ? Color(hex: 0x11141C) : .white.opacity(0.85))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background {
+                                if selected {
+                                    Capsule().fill(environment.theme.accentBright)
+                                } else {
+                                    Capsule().fill(AppTheme.surface).overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+        }
+    }
+
+    @ViewBuilder
+    private var statusView: some View {
+        VStack(spacing: 12) {
+            if isLoading {
+                ProgressView().tint(.white)
+                Text("Loading \(provider.name)…").font(DesignTokens.Typography.caption).foregroundStyle(.white.opacity(0.6))
+            } else {
+                Image(systemName: trimmedQuery.isEmpty ? "books.vertical" : "magnifyingglass")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(environment.theme.accentBright)
+                Text(trimmedQuery.isEmpty ? "Couldn't load \(provider.name)" : "No results for “\(trimmedQuery)”")
+                    .font(.headline).foregroundStyle(.white)
+                if let errorText {
+                    Text(errorText).font(.caption).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+        .padding(.horizontal, 32)
     }
 
     private func loadHome() async {
@@ -117,57 +177,149 @@ struct MangaHomeView: View {
     }
 }
 
-private struct MangaCoverRow: View {
+/// Artwork-first feature card: blurred cover backdrop, large cover, title and
+/// a primary Read action, like the home screen's hero.
+private struct MangaHeroCard: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    let manga: Manga
+    let caption: String
+    let providerName: String
+
+    var body: some View {
+        NavigationLink(value: MangaRoute.detail(manga)) {
+            Group {
+                HStack(alignment: .bottom, spacing: 16) {
+                    MangaCover(manga: manga)
+                        .frame(width: 128, height: 192)
+                        .shadow(color: DesignTokens.Elevation.posterShadow, radius: 16, y: 8)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(caption.uppercased())
+                            .font(.caption2.weight(.bold))
+                            .tracking(1.2)
+                            .foregroundStyle(environment.theme.accentBright)
+                        Text(manga.title)
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                        Text(providerName)
+                            .font(DesignTokens.Typography.metadata)
+                            .foregroundStyle(.white.opacity(0.65))
+                        HStack(spacing: 6) {
+                            Image(systemName: "book.fill")
+                            Text("Read")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color(hex: 0x11141C))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 9)
+                        .background(Capsule().fill(LinearGradient(colors: [Color(hex: 0xF7F9FF), Color(hex: 0xCBD3E1)], startPoint: .top, endPoint: .bottom)))
+                        .shadow(color: environment.theme.accent.opacity(0.45), radius: 10, y: 3)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(18)
+            }
+            .frame(maxWidth: .infinity, minHeight: 250, alignment: .bottomLeading)
+            .background {
+                // Backdrop must not take part in layout, or fill-mode artwork widens the card.
+                ZStack {
+                    MangaCover(manga: manga, cornerRadius: 0)
+                        .blur(radius: 28)
+                        .scaleEffect(1.3)
+                        .opacity(0.7)
+                    LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.sheet, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.sheet, style: .continuous).stroke(AppTheme.border, lineWidth: 1))
+        }
+        .buttonStyle(PressablePosterButtonStyle())
+    }
+}
+
+/// Horizontal cover shelf matching MediaShelfView's title and poster sizes.
+private struct MangaShelf: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    let title: String
     let items: [Manga]
     var caption: (Manga) -> String? = { _ in nil }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items, id: \.self) { manga in
-                    NavigationLink(value: MangaRoute.detail(manga)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            MangaCover(manga: manga)
-                                .frame(width: 104, height: 152)
-                            Text(manga.title)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                            if let caption = caption(manga) {
-                                Text(caption).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title).font(DesignTokens.Typography.shelfTitle).foregroundStyle(.white)
+                    Spacer()
+                    Text("\(items.count)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(environment.theme.accentBright)
+                }
+                .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(items, id: \.self) { manga in
+                            NavigationLink(value: MangaRoute.detail(manga)) {
+                                MangaPosterCard(manga: manga, caption: caption(manga))
                             }
+                            .buttonStyle(PressablePosterButtonStyle())
                         }
-                        .frame(width: 104, alignment: .leading)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
-        .listRowInsets(EdgeInsets())
     }
 }
 
-private struct MangaListRow: View {
+private struct MangaPosterCard: View {
+    let manga: Manga
+    var caption: String?
+    private let width = MediaArtworkLayout.shelfPosterWidth
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            MangaCover(manga: manga)
+                .frame(width: width, height: width * 1.5)
+            Text(manga.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(width: width, alignment: .leading)
+            if let caption {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+                    .frame(width: width, alignment: .leading)
+            }
+        }
+        .foregroundStyle(.white)
+    }
+}
+
+private struct MangaGridCard: View {
     let manga: Manga
 
     var body: some View {
-        HStack(spacing: 12) {
-            MangaCover(manga: manga).frame(width: 54, height: 78)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(manga.title).font(.body.weight(.semibold)).lineLimit(2)
-                if let status = manga.status { Text(status).font(.caption).foregroundStyle(.secondary) }
-                if let overview = manga.overview {
-                    Text(overview).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                }
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Color.clear
+                .aspectRatio(2 / 3, contentMode: .fit)
+                .overlay { MangaCover(manga: manga, cornerRadius: 0) }
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Text(manga.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2, reservesSpace: true)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .foregroundStyle(.white)
     }
 }
 
 private struct MangaCover: View {
     let manga: Manga
+    var cornerRadius: CGFloat = DesignTokens.Radius.poster
 
     var body: some View {
         MangaRemoteImage(
@@ -175,7 +327,7 @@ private struct MangaCover: View {
             headers: MangaCatalog.provider(id: manga.providerID)?.imageHeaders ?? [:],
             contentMode: .fill
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 

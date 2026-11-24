@@ -112,6 +112,9 @@ struct RootView: View {
             if let target = WidgetDeepLink.consumePending() {
                 handleWidgetLink(target)
             }
+            #if DEBUG
+            applyDebugLaunchRoute()
+            #endif
         }
         .fullScreenCover(item: $widgetLiveChannel) { channel in
             let provider = LiveTVProviders.all().first { $0.id == channel.providerID }
@@ -252,6 +255,31 @@ struct RootView: View {
             openLiveHub()
         }
     }
+
+    #if DEBUG
+    /// `-openTab <name>` / `-openMore <route>` launch arguments, used to reach
+    /// screens for simulator screenshots.
+    private func applyDebugLaunchRoute() {
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(_ flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+            return arguments[index + 1]
+        }
+        switch value("-openTab") {
+        case "home": selectedTab = .home
+        case "movies": selectedTab = .movies
+        case "series": selectedTab = .series
+        case "library": selectedTab = .library
+        case "more": selectedTab = .more
+        default: break
+        }
+        if let route = value("-openMore") {
+            selectedTab = .more
+            UserDefaults.standard.set(route, forKey: "stremio.shortcut.moreRoute.v1")
+            NotificationCenter.default.post(name: Notification.Name("stremio.shortcut.moreRoute"), object: route)
+        }
+    }
+    #endif
 
     private func openLiveHub() {
         selectedTab = .more
