@@ -5,6 +5,7 @@ import WidgetKit
 /// Mirrors the app's `WidgetContinueRow`; the app writes these into the
 /// shared App Group container whenever watch progress changes.
 struct WidgetContinueRow: Codable, Hashable {
+    var contentID: String? = nil
     let title: String
     let subtitle: String?
     let progress: Double
@@ -14,6 +15,17 @@ struct WidgetContinueRow: Codable, Hashable {
 struct WidgetContinueSnapshot: Codable {
     let rows: [WidgetContinueRow]
     let updatedAt: Date
+}
+
+enum WidgetLinks {
+    static let library = URL(string: "betterstreamflix://continue")!
+
+    static func resume(_ row: WidgetContinueRow) -> URL {
+        guard let id = row.contentID,
+              var components = URLComponents(string: "betterstreamflix://continue") else { return library }
+        components.queryItems = [URLQueryItem(name: "id", value: id)]
+        return components.url ?? library
+    }
 }
 
 enum WidgetShared {
@@ -107,13 +119,16 @@ struct ContinueWatchingWidgetView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Continue Watching").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                    ForEach(entry.rows) { row(for: $0) }
+                    ForEach(entry.rows) { item in
+                        Link(destination: WidgetLinks.resume(item.row)) { row(for: item) }
+                    }
                     Spacer(minLength: 0)
                 }
             }
         }
         .containerBackground(for: .widget) { Color.black }
         .foregroundStyle(.white)
+        .widgetURL(family == .systemSmall ? entry.rows.first.map { WidgetLinks.resume($0.row) } ?? WidgetLinks.library : WidgetLinks.library)
     }
 
     private func small(_ item: ContinueWatchingEntry.Row) -> some View {

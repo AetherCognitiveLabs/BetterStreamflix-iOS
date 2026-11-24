@@ -4,6 +4,7 @@ import WidgetKit
 
 /// Row shown by the Continue Watching widget; mirrored in the widget target.
 struct WidgetContinueRow: Codable, Hashable, Sendable {
+    var contentID: String? = nil
     let title: String
     let subtitle: String?
     let progress: Double
@@ -13,6 +14,46 @@ struct WidgetContinueRow: Codable, Hashable, Sendable {
 struct WidgetContinueSnapshot: Codable, Sendable {
     let rows: [WidgetContinueRow]
     let updatedAt: Date
+}
+
+/// `betterstreamflix://continue?id=<contentID>` links from the widgets. A row
+/// resumes that title in the player (like Android's watch deep link); the
+/// bare link opens the Library.
+enum WidgetDeepLink {
+    static let didReceive = Notification.Name("widget.deepLink.didReceive")
+    private static let pendingKey = "widget.deepLink.pending.v1"
+
+    enum Target: Equatable {
+        case continueWatching(contentID: String?)
+    }
+
+    static func parse(_ url: URL) -> Target? {
+        guard url.scheme?.lowercased() == "betterstreamflix" else { return nil }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? {
+            items.first { $0.name == name }?.value.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        switch url.host?.lowercased() {
+        case "continue": return .continueWatching(contentID: value("id"))
+        default: return nil
+        }
+    }
+
+    /// Called from `onOpenURL`; RootView picks the target up via notification,
+    /// or from the pending slot when it wasn't on screen yet.
+    @MainActor
+    static func handle(_ url: URL) -> Bool {
+        guard parse(url) != nil else { return false }
+        UserDefaults.standard.set(url.absoluteString, forKey: pendingKey)
+        NotificationCenter.default.post(name: didReceive, object: url.absoluteString)
+        return true
+    }
+
+    static func consumePending() -> Target? {
+        guard let raw = UserDefaults.standard.string(forKey: pendingKey) else { return nil }
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        return URL(string: raw).flatMap(parse)
+    }
 }
 
 /// Writes the newest continue-watching rows into the App Group container for
@@ -44,6 +85,7 @@ final class WidgetSnapshotWriter {
             .prefix(5)
             .map { progress in
                 WidgetContinueRow(
+                    contentID: progress.contentID,
                     title: progress.media.title,
                     subtitle: progress.episode.map { episode in
                         ["S\(episode.seasonNumber) E\(episode.number)", progress.episodeDisplayTitle]

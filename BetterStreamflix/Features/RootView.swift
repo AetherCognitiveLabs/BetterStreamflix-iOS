@@ -97,6 +97,9 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: StremioShortcutBridge.didReceiveNotification)) { note in
             handleShortcut(routeRaw: note.object as? String)
         }
+        .onReceive(NotificationCenter.default.publisher(for: WidgetDeepLink.didReceive)) { _ in
+            if let target = WidgetDeepLink.consumePending() { handleWidgetLink(target) }
+        }
         .onAppear {
             if pendingStremioInstallURL == nil,
                let pending = StremioInstallDeepLink.peekPending() {
@@ -104,6 +107,9 @@ struct RootView: View {
             }
             if let pending = StremioShortcutBridge.consumePending() {
                 handleShortcut(routeRaw: pending.rawValue)
+            }
+            if let target = WidgetDeepLink.consumePending() {
+                handleWidgetLink(target)
             }
         }
         .fullScreenCover(item: $shortcutResumePlayback) { request in
@@ -215,6 +221,18 @@ struct RootView: View {
         guard !isHomeReady else { return }
         withAnimation(reduceMotion ? nil : DesignTokens.Motion.entrance) {
             isHomeReady = true
+        }
+    }
+
+    private func handleWidgetLink(_ target: WidgetDeepLink.Target) {
+        switch target {
+        case .continueWatching(let contentID):
+            if let contentID,
+               let progress = environment.library.continueWatching.first(where: { $0.contentID == contentID }) {
+                shortcutResumePlayback = PlaybackRequest(media: progress.media, episode: progress.episode)
+            } else {
+                selectedTab = .library
+            }
         }
     }
 

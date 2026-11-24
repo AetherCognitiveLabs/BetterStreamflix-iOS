@@ -94,6 +94,7 @@ struct BetterStreamflixApp: App {
                 .environmentObject(watchlistToast)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
+                    if WidgetDeepLink.handle(url) { return }
                     if StremioInstallDeepLink.handle(url: url) {
                         DesignTokens.Haptics.selection()
                     }
