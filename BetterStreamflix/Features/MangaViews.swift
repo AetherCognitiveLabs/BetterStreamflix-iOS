@@ -853,60 +853,62 @@ struct MangaDownloadsSection: View {
     @ObservedObject private var downloads = MangaDownloadManager.shared
     @Binding var reader: MangaReaderTarget?
 
+    @EnvironmentObject private var environment: AppEnvironment
+
     var body: some View {
         if !downloads.items.isEmpty {
-            Section {
-                ForEach(downloads.items) { item in
-                    Button { open(item) } label: { row(item) }
-                        .buttonStyle(.plain)
-                        .swipeActions {
-                            Button(role: .destructive) { downloads.remove(item.id) } label: {
-                                Label("Delete", systemImage: "trash")
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Manga").font(DesignTokens.Typography.shelfTitle).foregroundStyle(.white)
+                VStack(spacing: 0) {
+                    ForEach(Array(downloads.items.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { Divider().overlay(AppTheme.border).padding(.leading, 82) }
+                        Button { open(item) } label: { row(item) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Delete Download", systemImage: "trash", role: .destructive) { downloads.remove(item.id) }
                             }
-                        }
+                    }
                 }
-            } header: {
-                Text("Manga")
-            } footer: {
-                Text("\(ByteCountFormatter.string(fromByteCount: downloads.totalBytesOnDisk, countStyle: .file)) of manga on this device")
+                .appSurface(cornerRadius: DesignTokens.Radius.card)
             }
         }
     }
 
     private func row(_ item: MangaChapterDownload) -> some View {
-        HStack(spacing: 12) {
-            MangaCover(manga: item.manga).frame(width: 40, height: 58)
+        HStack(spacing: 14) {
+            MangaCover(manga: item.manga, cornerRadius: 8).frame(width: 54, height: 80)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.manga.title).font(.headline).foregroundStyle(AppTheme.primaryText).lineLimit(1)
-                Text(item.chapter.displayTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.manga.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(item.chapter.displayTitle).font(.caption).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
                 switch item.state {
                 case .queued:
-                    Text("Queued").font(.caption2).foregroundStyle(.secondary)
+                    Text("Queued").font(.caption2.weight(.medium)).foregroundStyle(.white.opacity(0.5))
                 case .downloading:
-                    ProgressView(value: item.progress)
-                    Text("\(item.pagesDone) of \(item.pageCount) pages").font(.caption2).foregroundStyle(.secondary)
+                    DownloadProgressBar(progress: item.progress, color: Color(hex: 0x765BFF))
+                    Text("\(item.pagesDone) of \(item.pageCount) pages").font(.caption2.monospacedDigit()).foregroundStyle(.white.opacity(0.5))
                 case .completed:
-                    Text("Downloaded · \(item.pageCount) pages · \(ByteCountFormatter.string(fromByteCount: item.bytesOnDisk, countStyle: .file))")
-                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("\(item.pageCount) pages · \(ByteCountFormatter.string(fromByteCount: item.bytesOnDisk, countStyle: .file))")
+                        .font(.caption2).foregroundStyle(.white.opacity(0.5))
                 case .failed:
-                    Text(item.errorMessage ?? "Download failed").font(.caption2).foregroundStyle(.red).lineLimit(2)
+                    Text(item.errorMessage ?? "Download failed").font(.caption2).foregroundStyle(Color(hex: 0xFF6B6B)).lineLimit(2)
                 }
             }
             Spacer(minLength: 8)
             switch item.state {
             case .completed:
-                Image(systemName: "book.circle.fill").font(.title2).foregroundStyle(.secondary)
+                DownloadCircleIcon(systemImage: "book.fill", filled: true, color: Color(hex: 0x9C88FF))
             case .failed:
-                Button { downloads.retry(item.id) } label: { Image(systemName: "arrow.clockwise.circle.fill").font(.title2) }
-                    .buttonStyle(.borderless)
+                Button { downloads.retry(item.id) } label: { DownloadCircleIcon(systemImage: "arrow.clockwise", filled: false, color: .white) }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Retry download")
             case .queued, .downloading:
-                Button { downloads.cancel(item.id) } label: { Image(systemName: "xmark.circle.fill").font(.title2) }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
+                Button { downloads.cancel(item.id) } label: { DownloadCircleIcon(systemImage: "xmark", filled: false, color: .white) }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Cancel download")
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
     }
 

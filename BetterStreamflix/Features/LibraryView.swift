@@ -7,7 +7,11 @@ struct LibraryView: View {
     @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @State private var selectedDetails: ResolvedMediaItem?
     @State private var playback: PlaybackRequest?
+    #if DEBUG
+    @State private var segment: LibrarySegment = ProcessInfo.processInfo.arguments.contains("-libraryDownloads") ? .downloads : .continueWatching
+    #else
     @State private var segment: LibrarySegment = .continueWatching
+    #endif
     @State private var sortNewestFirst = true
     @State private var newListName = ""
     @State private var showCreateList = false
