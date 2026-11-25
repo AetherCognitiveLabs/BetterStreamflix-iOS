@@ -26,7 +26,14 @@ final class HLSProxyServer {
         for connection in connections.values { connection.cancel() }
     }
 
+    /// Default-off while device verification is pending: playback must never depend
+    /// on the loopback proxy unless the user explicitly enables it in Settings.
+    static var isEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "playback.hlsProxy.enabled")
+    }
+
     func proxiedURL(for url: URL, headers: [String: String]) async -> URL? {
+        guard Self.isEnabled else { return nil }
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let host = url.host?.lowercased(),
               host != "127.0.0.1", host != "localhost" else { return nil }
