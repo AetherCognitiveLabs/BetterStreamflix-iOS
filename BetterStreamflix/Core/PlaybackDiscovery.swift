@@ -227,10 +227,10 @@ struct StreamSelectionPolicy: Sendable {
         }
         return [
             preference == candidate.preference ? 0 : 1,
+            audioRank,
             cachedRank,
             bingeRank,
             releaseRank,
-            audioRank,
             candidate.subtitleKind == .embeddedEnglish ? 2 : candidate.subtitleKind == .unknown ? 1 : 0,
             sizeRank,
             seederRank,
