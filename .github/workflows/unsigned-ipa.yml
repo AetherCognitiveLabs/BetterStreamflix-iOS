@@ -6,207 +6,34 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Marketing version for the IPA (leave empty to use project.yml)"
+        description: "Marketing version override (default: version from project.yml)"
         required: false
-        type: string
-      notes:
-        description: "Release notes Markdown (optional)"
-        required: false
-        type: string
-
-permissions:
-  contents: write
-
-concurrency:
-  group: unsigned-ipa-${{ github.ref }}
-  cancel-in-progress: true
+        default: ""
 
 jobs:
-  build-unsigned-ipa:
-    name: Build unsigned IPA
-    runs-on: macos-15
-    timeout-minutes: 60
-
+  build:
+    runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: |
-          set -euo pipefail
-          # Prefer the newest installed Xcode (iOS 26+ SDK when the runner has it).
-          CANDIDATES=(
-            "/Applications/Xcode_26.0.app"
-            "/Applications/Xcode_26.app"
-            "/Applications/Xcode-beta.app"
-            "/Applications/Xcode.app"
-          )
-          SELECTED=""
-          for path in "${CANDIDATES[@]}"; do
-            if [[ -d "$path/Contents/Developer" ]]; then
-              SELECTED="$path"
-              break
-            fi
-          done
-          if [[ -z "$SELECTED" ]]; then
-            echo "No Xcode app found under /Applications" >&2
-            ls /Applications || true
-            exit 1
-          fi
-          sudo xcode-select -s "$SELECTED/Contents/Developer"
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-          ls /Applications | grep -i xcode || true
-
-      - name: Resolve version and build
-        id: meta
-        run: |
-          set -euo pipefail
-          INPUT="${{ github.event.inputs.version }}"
-          if [[ -n "${INPUT}" ]]; then
-            VERSION="$INPUT"
-          else
-            VERSION="$(sed -nE 's/.*MARKETING_VERSION: ([0-9]+([.][0-9]+){0,2}).*/\1/p' project.yml | head -1)"
-          fi
-          if [[ -z "$VERSION" ]]; then
-            echo "Could not resolve marketing version." >&2
-            exit 1
-          fi
-          BUILD="${{ github.run_number }}"
-          {
-            echo "version=$VERSION"
-            echo "build=$BUILD"
-            echo "tag=v${VERSION}"
-          } >> "$GITHUB_OUTPUT"
-          echo "Building BetterStreamflix $VERSION ($BUILD) unsigned IPA"
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
       - name: Build unsigned IPA
         env:
-          BUILD_VERSION: ${{ steps.meta.outputs.version }}
-          BUILD_NUMBER: ${{ steps.meta.outputs.build }}
-        run: ./build-unsigned-ipa.sh "$BUILD_VERSION" "$BUILD_NUMBER"
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          if [ -z "$VERSION" ]; then
+            VERSION="$(sed -nE 's/.*MARKETING_VERSION: ([0-9]+(\.[0-9]+){0,2}).*/\1/p' project.yml | head -1)"
+          fi
+          echo "Building version $VERSION build $RUN_NUMBER"
+          BUILD_VERSION="$VERSION" BUILD_NUMBER="$RUN_NUMBER" bash build-unsigned-ipa.sh
 
-      - name: Upload IPA artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: BetterStreamflix-${{ steps.meta.outputs.version }}-unsigned
-          path: build/unsigned-ipa/${{ steps.meta.outputs.version }}/BetterStreamflix-${{ steps.meta.outputs.version }}-unsigned.ipa
+          name: unsigned-ipa
+          path: build/unsigned-ipa/**/*.ipa
           if-no-files-found: error
-          retention-days: 30
-
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          TAG: ${{ steps.meta.outputs.tag }}
-          BUILD: ${{ steps.meta.outputs.build }}
-          NOTES_INPUT: ${{ github.event.inputs.notes }}
-        run: |
-          set -euo pipefail
-          IPA="build/unsigned-ipa/${VERSION}/BetterStreamflix-${VERSION}-unsigned.ipa"
-          NOTES_FILE="$(mktemp)"
-          if [[ -n "${NOTES_INPUT}" ]]; then
-            printf '%s\n' "$NOTES_INPUT" > "$NOTES_FILE"
-          elif [[ -f "RELEASE_NOTES_${VERSION}.md" ]]; then
-            cp "RELEASE_NOTES_${VERSION}.md" "$NOTES_FILE"
-          else
-            cat > "$NOTES_FILE" <<EOF
-          ## BetterStreamflix ${VERSION}
-
-          Build ${BUILD}. Unsigned IPA for sideloading.
-
-          - Artifact: \`BetterStreamflix-${VERSION}-unsigned.ipa\`
-          - Install with your own signing / sideload flow
-          EOF
-          fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release delete "$TAG" --yes || true
-            git push origin ":refs/tags/${TAG}" || true
-          fi
-          gh release create "$TAG" "$IPA" \
-            --title "BetterStreamflix ${VERSION}" \
-            --notes-file "$NOTES_FILE" \
-            --latest
-
-      - name: Publish update feeds
-        env:
-          GH_TOKEN: ${{ secrets.UPDATES_WRITE_TOKEN }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          BUILD: ${{ steps.meta.outputs.build }}
-          TAG: ${{ steps.meta.outputs.tag }}
-          NOTES_INPUT: ${{ github.event.inputs.notes }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo "UPDATES_WRITE_TOKEN secret is required to publish ios/latest.json" >&2
-            exit 1
-          fi
-          RELEASED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          if [[ -n "${NOTES_INPUT}" ]]; then
-            NOTES="$NOTES_INPUT"
-          elif [[ -f "RELEASE_NOTES_${VERSION}.md" ]]; then
-            NOTES="$(cat "RELEASE_NOTES_${VERSION}.md")"
-          else
-            NOTES="BetterStreamflix ${VERSION} build ${BUILD}."
-          fi
-          export VERSION BUILD TAG RELEASED_AT NOTES
-          PAYLOAD="$(python3 - <<'PY'
-          import json, os
-          print(json.dumps({
-            "version": os.environ["VERSION"],
-            "build": os.environ["BUILD"],
-            "releasedAt": os.environ["RELEASED_AT"],
-            "notes": os.environ["NOTES"],
-            "releasePageUrl": f"https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/{os.environ['TAG']}",
-            "ipaAssetName": f"BetterStreamflix-{os.environ['VERSION']}-unsigned.ipa",
-          }, indent=2) + "\n")
-          PY
-          )"
-          export PAYLOAD_JSON="$PAYLOAD"
-
-          publish_feed() {
-            local repo="$1"
-            local label="$2"
-            local WORK
-            WORK="$(mktemp -d)"
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/BetterStreamflix/${repo}.git" "$WORK"
-            mkdir -p "$WORK/ios"
-            printf '%s' "$PAYLOAD" > "$WORK/ios/latest.json"
-            FEED_WORK="$WORK" python3 - <<'PY'
-          import json, os, pathlib
-          work = pathlib.Path(os.environ["FEED_WORK"])
-          latest = json.loads(os.environ["PAYLOAD_JSON"])
-          history_path = work / "ios" / "releases.json"
-          existing = []
-          if history_path.exists():
-              try:
-                  loaded = json.loads(history_path.read_text())
-                  if isinstance(loaded, list):
-                      existing = loaded
-              except Exception:
-                  existing = []
-          key = (latest.get("version"), latest.get("build"))
-          existing = [
-              item for item in existing
-              if (item.get("version"), item.get("build")) != key
-          ]
-          existing.insert(0, latest)
-          history_path.write_text(json.dumps(existing, indent=2) + "\n")
-          PY
-
-            git -C "$WORK" config user.name "BetterStreamflix"
-            git -C "$WORK" config user.email "333210020+BetterStreamflix@users.noreply.github.com"
-            git -C "$WORK" add ios/latest.json ios/releases.json
-            if git -C "$WORK" diff --cached --quiet; then
-              echo "${label} feed already current"
-            else
-              git -C "$WORK" commit -m "iOS ${VERSION} (${BUILD})"
-              git -C "$WORK" push origin HEAD:main
-              echo "Published ${label} feed"
-            fi
-          }
-
-          # Private bookkeeping copy.
-          publish_feed "BetterStreamflix-updates" "private"
-          # Public raw feed the app fetches without a token.
-          publish_feed "BetterStreamflix-update-feed" "public"

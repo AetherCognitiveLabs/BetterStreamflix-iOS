@@ -32,7 +32,7 @@
 	<key>SubDLAPIKey</key>
 	<string>subdl_xNeTPx7Et1DZaJSRg3bMTE2RRDqWYmCX7clzXAjSlWs</string>
 	<key>TMDBReadAccessToken</key>
-	<string>eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI3NmVhMDlkODViNTIzZTgzMmU2YzM3NjVlNDQyODgzNiIsIm5iZiI6MTc4NzgxNzk0Ny45NzUwMDAxLCJzdWIiOiI2YThmZWZkYjAwYjY5ZmMxMTkzY2U5ZTgiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.dYwBrAG1hXl1kCPAWGLbBl54zyicbxW9aMN9YoGxQdI</string>
+	<string>eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJiNWYxNmMwZGIzODJiYzM3NjI4ODg4MzE4YjNiODRkZSIsIm5iZiI6MTc5NTY0MjY0My40MDgsInN1YiI6IjZiMDc1NTEzNGEwNmJlYTViNjJkNTY4ZSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.m4hyTLT6s6QJIIWBfplI3z088ghKoTRj959XhFuoV0Q</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
