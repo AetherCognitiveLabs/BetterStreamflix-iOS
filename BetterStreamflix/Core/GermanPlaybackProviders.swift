@@ -1905,7 +1905,6 @@ struct ZdfMediathekPlaybackProvider: GermanPlaybackProvider {
                 let kind = target["contentType"] as? String
                 return isSeries ? kind == "brand" && GermanScrape.matches(title, context: context)
                     : kind == "episode" && GermanScrape.matches(title, year: AnimeMatching.year(target["editorialDate"] as? String), context: context)
-                        || kind == "episode" && GermanScrape.matches(title, context: context)
             }
             for target in matching.prefix(2) {
                 guard let canonical = target["canonical"] as? String else { continue }
