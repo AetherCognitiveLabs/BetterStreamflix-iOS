@@ -1249,6 +1249,7 @@ struct PlayerScreen: View {
     @State private var sourceSwitchTask: Task<Void, Never>?
     @State private var sourceSwitchRequestID = UUID()
     @State private var automaticFailoverCount = 0
+    @State private var preparingSince: Date?
     @State private var pendingEpisodeLoad: PendingEpisodeLoad?
     @State private var episodeLoadTask: Task<Void, Never>?
     @State private var showSourceFilters = false
@@ -1712,6 +1713,18 @@ struct PlayerScreen: View {
             // still ends on the manual retry/next-source controls.
             if state == .playing {
                 automaticFailoverCount = 0
+                preparingSince = nil
+            } else if state == .preparing || state == .recovering {
+                if preparingSince == nil { preparingSince = Date() }
+                let stuck = preparingSince.map { Date().timeIntervalSince($0) > 25 } ?? false
+                if stuck,
+                   automaticFailoverCount < 2,
+                   sourceSwitchTask == nil,
+                   model.streams.count > 1 {
+                    automaticFailoverCount += 1
+                    preparingSince = nil
+                    switchToNextSource()
+                }
             } else if state == .failed,
                       automaticFailoverCount < 2,
                       sourceSwitchTask == nil,
@@ -1722,6 +1735,17 @@ struct PlayerScreen: View {
         }
         .onChange(of: model.isLoading) { _, _ in
             finishPendingEpisodeLoadIfReady()
+        }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+            guard session.playbackState == .preparing || session.playbackState == .recovering,
+                  let since = preparingSince,
+                  Date().timeIntervalSince(since) > 25,
+                  automaticFailoverCount < 2,
+                  sourceSwitchTask == nil,
+                  model.streams.count > 1 else { return }
+            automaticFailoverCount += 1
+            preparingSince = nil
+            switchToNextSource()
         }
         .onChange(of: session.isBuffering) { _, _ in
             finishPendingEpisodeLoadIfReady()
