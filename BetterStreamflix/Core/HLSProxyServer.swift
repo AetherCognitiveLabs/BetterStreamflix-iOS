@@ -30,6 +30,13 @@ final class HLSProxyServer {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let host = url.host?.lowercased(),
               host != "127.0.0.1", host != "localhost" else { return nil }
+        // Progressive MP4/WebM files are single requests: AVURLAssetHTTPHeaderFieldsKey
+        // already carries the extractor headers there. The header-drop problem only
+        // exists for HLS subrequests (variant playlists, segments), so only HLS goes
+        // through the proxy — everything else keeps the direct, battle-tested path.
+        let path = url.path.lowercased()
+        let looksHLS = path.hasSuffix(".m3u8") || path.contains("/hls") || path.contains("m3u8")
+        guard looksHLS else { return nil }
         guard let port = try? await startIfNeeded() else { return nil }
         let token = token(for: headers)
         let encoded = Data(url.absoluteString.utf8).base64EncodedString()
