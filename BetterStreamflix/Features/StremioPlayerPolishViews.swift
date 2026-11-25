@@ -200,13 +200,6 @@ struct StremioPlayerTopChromeView: View {
                 .padding(.top, toast == nil ? ScreenMetrics.topSafeAreaInset + 56 : 0)
             if showFiltersChip {
                 HStack(spacing: 8) {
-                    if let bingeGroup {
-                        Text("Continuing \(bingeGroup)")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
                     Button(action: onOpenFilters) {
                         Label(
                             filtersActive ? "Filters · on" : "Filters",
@@ -219,6 +212,7 @@ struct StremioPlayerTopChromeView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.top, 8)
             }
         }

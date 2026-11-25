@@ -240,7 +240,7 @@ final class HLSProxyServer {
         if line.hasPrefix("#") {
             return rewriteURIAttributes(in: line, base: base, prefix: prefix)
         }
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.hasPrefix("http://127.0.0.1") else { return line }
         guard let resolved = resolve(trimmed, base: base) else { return line }
         return line.replacingOccurrences(of: trimmed, with: proxyURLString(for: resolved, prefix: prefix))

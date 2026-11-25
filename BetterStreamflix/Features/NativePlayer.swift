@@ -3755,7 +3755,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         controller.updatesNowPlayingInfoCenter = false
         controller.player = player
         controller.delegate = context.coordinator
-        controller.showsPlaybackControls = true
+        controller.showsPlaybackControls = false
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         // PlayerScreen is already presented as a full-screen cover. Letting
@@ -3784,6 +3784,12 @@ struct NativePlayerController: UIViewControllerRepresentable {
         )
         context.coordinator.updateBuffering(isBuffering)
         context.coordinator.updatePlaybackError(playbackErrorMessage)
+        let ready = player.currentItem != nil
+            && player.currentItem?.status == .readyToPlay
+            && playbackErrorMessage == nil
+        if controller.showsPlaybackControls != ready {
+            controller.showsPlaybackControls = ready
+        }
     }
 
     @MainActor
