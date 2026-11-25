@@ -637,7 +637,7 @@ struct HDFilmePlaybackProvider: GermanPlaybackProvider {
     var displayName: String { "HDFilme" }
     var baseURL: URL { Self.base }
 
-    private static let base = URL(string: "https://hdfilme.cafe/")!
+    private static let base = URL(string: "https://hd-filme.one/")!
     private static let sitemaps = ["news_pages.xml", "news_pages2.xml"]
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
@@ -659,12 +659,18 @@ struct HDFilmePlaybackProvider: GermanPlaybackProvider {
     }
 
     private func embedHosters(imdb: String, context: PlaybackLookupContext) async throws -> [GermanHoster] {
-        guard let episode = context.request.episode else {
-            guard let embed = URL(string: "https://meinecloud.click/movie/\(imdb)") else { return [] }
-            return await MeinecloudEmbedHelper.expand(embed, referer: baseURL).map {
-                GermanHoster(name: $0.name, url: $0.url, referer: embed)
-            }
+        let episode = context.request.episode
+        let mirrors = await DeVideoSRC.sources(
+            imdb: imdb,
+            season: episode?.seasonNumber,
+            episode: episode?.number,
+            referer: baseURL
+        )
+        if !mirrors.isEmpty {
+            return mirrors.map { GermanHoster(name: $0.name, url: $0.url, referer: baseURL) }
         }
+        // Older meinecloud structure: episode data-link in the serial page HTML.
+        guard let episode else { return [] }
         guard let html = try await serialPage(imdb: imdb),
               let link = Self.serialEpisodeLink(
                   in: html,
@@ -1518,6 +1524,87 @@ struct KellerKinoPlaybackProvider: GermanPlaybackProvider {
 /// id; the embed page's token unlocks `POST /api/embed-links`, which returns
 /// the standard hoster embed set (dropload, doodstream, mixdrop, voe,
 /// supervideo, ...). Ported from StreamcloudProvider.kt.
+
+/// Shared resolver for the devideosrc/meinecloud embed network (HDFilme,
+/// StreamCloud and several mirror sites). The embed pages no longer carry
+/// hoster links in their HTML: a time-limited `token` from the page unlocks
+/// `/api/embed-links`, which hands out every mirror in one POST — movies as a
+/// flat `sources` list, series nested per season and episode.
+enum DeVideoSRC {
+    static let hosts = ["https://devideosrc.co", "https://meinecloud.click"]
+
+    /// Mirrors for a movie (season nil) or one series episode, already decoded.
+    static func sources(
+        imdb: String,
+        season: Int?,
+        episode: Int?,
+        referer: URL
+    ) async -> [(name: String, url: URL)] {
+        let isSeries = season != nil
+        let numeric = imdb.hasPrefix("tt") ? String(imdb.dropFirst(2)) : imdb
+        for host in hosts {
+            let path = isSeries ? "serial/\(numeric)" : "movie/\(imdb)"
+            guard let embedURL = URL(string: "\(host)/\(path)") else { continue }
+            guard let page = try? await GermanScrape.client.page(embedURL, referer: referer),
+                  let token = AnimeHTML.captures(#"token:\s*"([^"]+)""#, in: page).first?[1] else { continue }
+            let apiType = isSeries ? "tv" : "movie"
+            guard let api = URL(string: "\(host)/api/embed-links") else { continue }
+            let request = HosterHTTP.jsonRequest(
+                url: api,
+                referer: embedURL,
+                headers: ["User-Agent": HTTPClient.desktopUserAgent],
+                body: ["type": apiType, "id": imdb, "token": token]
+            )
+            guard let response = try? await GermanScrape.client.send(request),
+                  let root = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any] else { continue }
+            if isSeries {
+                let found = episodeSources(
+                    in: root,
+                    season: season ?? 0,
+                    episode: episode ?? 0
+                )
+                if !found.isEmpty { return found }
+            } else if let list = root["sources"] as? [[String: Any]] {
+                let found = list.compactMap(sourceEntry)
+                if !found.isEmpty { return found }
+            }
+        }
+        return []
+    }
+
+    private static func episodeSources(
+        in root: [String: Any],
+        season: Int,
+        episode: Int
+    ) -> [(name: String, url: URL)] {
+        guard let tv = root["tv"] as? [String: Any],
+              let seasons = tv["seasons"] as? [[String: Any]] else { return [] }
+        for seasonBlock in seasons {
+            let seasonNumber = (seasonBlock["season_number"] as? Int)
+                ?? (seasonBlock["season_number"] as? Double).map(Int.init)
+                ?? -1
+            guard seasonNumber == season,
+                  let episodes = seasonBlock["episodes"] as? [[String: Any]] else { continue }
+            for entry in episodes {
+                let episodeNumber = (entry["episode_number"] as? Int)
+                    ?? (entry["episode_number"] as? Double).map(Int.init)
+                    ?? -1
+                guard episodeNumber == episode,
+                      let sources = entry["sources"] as? [[String: Any]] else { continue }
+                return sources.compactMap(sourceEntry)
+            }
+        }
+        return []
+    }
+
+    private static func sourceEntry(_ item: [String: Any]) -> (name: String, url: URL)? {
+        guard let raw = item["url"] as? String, !raw.isEmpty,
+              let url = URL(string: raw) else { return nil }
+        let label = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (name: label?.isEmpty == false ? label! : MeinecloudEmbedHelper.hosterDisplayName(for: url), url: url)
+    }
+}
+
 struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
     var id: String { "streamcloud" }
     var displayName: String { "StreamCloud" }
@@ -1530,7 +1617,7 @@ struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
         let kind = context.request.media.kind == .series ? "tv" : "movie"
         if let imdb = context.request.media.imdbID, imdb.hasPrefix("tt") {
-            let direct = try await embedSources(kind: kind, imdb: imdb, detailURL: baseURL)
+            let direct = try await embedSources(kind: kind, imdb: imdb, detailURL: baseURL, episode: context.request.episode)
             if !direct.isEmpty { return direct }
         }
         for query in GermanScrape.queries(for: context) {
@@ -1552,7 +1639,7 @@ struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
             ) else { continue }
             let detailHTML = try await GermanScrape.client.page(detail, referer: baseURL)
             guard let ref = Self.embedRef(in: detailHTML) else { continue }
-            let found = try await embedSources(kind: ref.kind, imdb: ref.imdb, detailURL: detail)
+            let found = try await embedSources(kind: ref.kind, imdb: ref.imdb, detailURL: detail, episode: context.request.episode)
             if !found.isEmpty { return found }
         }
         return []
@@ -1586,31 +1673,16 @@ struct StreamcloudPlaybackProvider: GermanPlaybackProvider {
         return (kind: match[1].contains("tv") ? "tv" : "movie", imdb: match[2])
     }
 
-    private func embedSources(kind: String, imdb: String, detailURL: URL) async throws -> [GermanHoster] {
-        guard let embedURL = URL(string: "\(Self.devideosrc)/\(kind)/\(imdb)") else { return [] }
-        let embedPage = try await GermanScrape.client.page(embedURL, referer: detailURL)
-        guard let token = AnimeHTML.captures(#"token:\s*"([^"]+)""#, in: embedPage).first?[1] else { return [] }
-        let apiType = AnimeHTML.captures(#"type:\s*'(\w+)'"#, in: embedPage).first?[1] ?? kind
-        guard let api = URL(string: "\(Self.devideosrc)/api/embed-links") else { return [] }
-        let request = HosterHTTP.jsonRequest(
-            url: api,
-            referer: embedURL,
-            headers: ["User-Agent": Self.ua],
-            body: ["type": apiType, "id": imdb, "token": token]
+    private func embedSources(kind: String, imdb: String, detailURL: URL, episode: MediaEpisode? = nil) async throws -> [GermanHoster] {
+        // Episodic responses nest sources per season/episode — the flat
+        // `sources` key only exists for movies.
+        let mirrors = await DeVideoSRC.sources(
+            imdb: imdb,
+            season: kind == "tv" ? episode?.seasonNumber : nil,
+            episode: kind == "tv" ? episode?.number : nil,
+            referer: detailURL
         )
-        let response = try await GermanScrape.client.send(request)
-        guard let root = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
-              let sources = root["sources"] as? [[String: Any]] else { return [] }
-        return sources.compactMap { item in
-            guard let raw = item["url"] as? String, !raw.isEmpty,
-                  let url = URL(string: raw) else { return nil }
-            let label = item["name"] as? String
-            return GermanHoster(
-                name: (label?.isEmpty == false ? label! : "StreamCloud"),
-                url: url,
-                referer: embedURL
-            )
-        }
+        return mirrors.map { GermanHoster(name: $0.name, url: $0.url, referer: detailURL) }
     }
 }
 
