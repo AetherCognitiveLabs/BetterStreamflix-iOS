@@ -888,15 +888,15 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
         for context: PlaybackLookupContext,
         referer: URL? = nil
     ) async -> [GermanHoster] {
-        guard context.request.episode == nil,
-              let imdb = context.request.media.imdbID,
-              imdb.hasPrefix("tt"),
-              let embed = URL(string: "https://meinecloud.click/movie/\(imdb)") else {
-            return []
-        }
-        return await MeinecloudEmbedHelper.expand(embed, referer: referer ?? baseURL).map {
-            GermanHoster(name: $0.name, url: $0.url, referer: embed)
-        }
+        guard let imdb = context.request.media.imdbID, imdb.hasPrefix("tt") else { return [] }
+        let episode = context.request.episode
+        let mirrors = await DeVideoSRC.sources(
+            imdb: imdb,
+            season: episode?.seasonNumber,
+            episode: episode?.number,
+            referer: referer ?? baseURL
+        )
+        return mirrors.map { GermanHoster(name: $0.name, url: $0.url, referer: referer ?? baseURL) }
     }
 
     private func findPage(for context: PlaybackLookupContext, origin: URL) async throws -> URL? {
@@ -1003,10 +1003,9 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
         let hosters = Self.movieHosters(in: html, page: page, session: session)
         if !hosters.isEmpty { return await GermanScrape.expandingWrappers(hosters) }
 
-        guard let imdb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1],
-              let embed = URL(string: "https://meinecloud.click/movie/\(imdb)") else { return [] }
-        return await MeinecloudEmbedHelper.expand(embed, referer: page).map {
-            GermanHoster(name: $0.name, url: $0.url, referer: embed)
+        guard let imdb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1] else { return [] }
+        return await DeVideoSRC.sources(imdb: imdb, season: nil, episode: nil, referer: page).map {
+            GermanHoster(name: $0.name, url: $0.url, referer: page)
         }
     }
 
