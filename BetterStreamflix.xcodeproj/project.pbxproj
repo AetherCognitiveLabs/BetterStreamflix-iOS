@@ -62,6 +62,7 @@
 		459ED05BBBF94889F957A57A /* ProviderDomainUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C053354801A28E88430CC002 /* ProviderDomainUpdater.swift */; };
 		A8E720E7CED9F864488E27DE /* ProviderHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3C07205D4C3945807449ED /* ProviderHealth.swift */; };
 		5E4BC0FA43B9C6422FDD1A3F /* CloudflareResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */; };
+		9B59B54259FC0248E5F6DA20 /* HLSProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6885977CBF2D6826CB7315BC /* HLSProxyServer.swift */; };
 		59CC5D97DDE60EB30B772F79 /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAD3C33E057EF456186C05C /* HTTPClient.swift */; };
 		6E15AD5DE7CC3147442D2BEC /* HTMLPayloadParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */; };
 		712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */; };
@@ -219,6 +220,7 @@
 		C053354801A28E88430CC002 /* ProviderDomainUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDomainUpdater.swift; sourceTree = "<group>"; };
 		9A3C07205D4C3945807449ED /* ProviderHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderHealth.swift; sourceTree = "<group>"; };
 		C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareResolver.swift; sourceTree = "<group>"; };
+		6885977CBF2D6826CB7315BC /* HLSProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSProxyServer.swift; sourceTree = "<group>"; };
 		A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleProviders.swift; sourceTree = "<group>"; };
 		D41A5B7B30630001007A449E /* SubtitleCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleCache.swift; sourceTree = "<group>"; };
 		A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -372,6 +374,7 @@
 				C053354801A28E88430CC002 /* ProviderDomainUpdater.swift */,
 				9A3C07205D4C3945807449ED /* ProviderHealth.swift */,
 				C45E6AA5193148E295C76A6E /* CloudflareResolver.swift */,
+				6885977CBF2D6826CB7315BC /* HLSProxyServer.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -671,6 +674,7 @@
 				459ED05BBBF94889F957A57A /* ProviderDomainUpdater.swift in Sources */,
 				A8E720E7CED9F864488E27DE /* ProviderHealth.swift in Sources */,
 				5E4BC0FA43B9C6422FDD1A3F /* CloudflareResolver.swift in Sources */,
+				9B59B54259FC0248E5F6DA20 /* HLSProxyServer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

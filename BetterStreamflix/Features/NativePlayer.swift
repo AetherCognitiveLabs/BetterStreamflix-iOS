@@ -1557,8 +1557,14 @@ final class PlayerSession: ObservableObject {
         PlaybackStartupTrace.mark(
             "subtitle asset START subtitles=\(subtitles.count)"
         )
+        let playbackURL: URL
+        if let proxied = await HLSProxyServer.shared.proxiedURL(for: source.url, headers: source.headers) {
+            playbackURL = proxied
+        } else {
+            playbackURL = source.url
+        }
         let originalAsset = AVURLAsset(
-            url: source.url,
+            url: playbackURL,
             options: ["AVURLAssetHTTPHeaderFieldsKey": source.headers]
         )
         var seenResources: Set<String> = []

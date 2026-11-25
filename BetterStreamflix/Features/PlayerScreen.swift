@@ -1248,6 +1248,7 @@ struct PlayerScreen: View {
     @State private var sourceSwitchStatus: SourceSwitchStatus?
     @State private var sourceSwitchTask: Task<Void, Never>?
     @State private var sourceSwitchRequestID = UUID()
+    @State private var automaticFailoverCount = 0
     @State private var pendingEpisodeLoad: PendingEpisodeLoad?
     @State private var episodeLoadTask: Task<Void, Never>?
     @State private var showSourceFilters = false
@@ -1258,6 +1259,62 @@ struct PlayerScreen: View {
             ?? model.streams.first?.candidate
         let queued = DownloadManager.shared.start(request: model.request, source: source, candidate: candidate)
         UINotificationFeedbackGenerator().notificationOccurred(queued ? .success : .warning)
+    }
+
+    private func switchToNextSource() {
+        // Skip the current mirror and open the next healthy candidate.
+        // Soft banner only — never a dead-end OK alert.
+        model.resetRecovery()
+        model.supersedeSourceSelection()
+        session.supersedeSourceSwitch()
+        sourceSwitchTask?.cancel()
+        let requestID = UUID()
+        sourceSwitchRequestID = requestID
+        withAnimation {
+            sourceSwitchStatus = .switching("Next available source")
+        }
+        saveProgress()
+        session.beginSourceSwitch()
+        sourceSwitchTask = Task {
+            let recovered = await model.recover { stream in
+                guard !Task.isCancelled,
+                      sourceSwitchRequestID == requestID else {
+                    return false
+                }
+                return await session.switchSource(
+                    stream,
+                    externalSubtitles: model.allSubtitles
+                )
+            }
+            guard !Task.isCancelled,
+                  sourceSwitchRequestID == requestID else { return }
+            if recovered {
+                withAnimation {
+                    let name = model.streams.first {
+                        $0.id == model.selectedSourceID
+                    }?.candidate.providerName ?? "Source"
+                    sourceSwitchStatus = .succeeded(name)
+                }
+                try? await Task.sleep(for: .seconds(1.4))
+                guard !Task.isCancelled,
+                      sourceSwitchRequestID == requestID else { return }
+                withAnimation { sourceSwitchStatus = nil }
+            } else {
+                session.cancelSourceSwitch(resumePrevious: true)
+                withAnimation {
+                    sourceSwitchStatus = .failed(
+                        "No other sources worked — pick one from Playback Settings"
+                    )
+                }
+                try? await Task.sleep(for: .seconds(2.4))
+                guard !Task.isCancelled,
+                      sourceSwitchRequestID == requestID else { return }
+                withAnimation { sourceSwitchStatus = nil }
+            }
+            if sourceSwitchRequestID == requestID {
+                sourceSwitchTask = nil
+            }
+        }
     }
 
     init(request: PlaybackRequest, nextRequest: PlaybackRequest?) {
@@ -1490,59 +1547,7 @@ struct PlayerScreen: View {
                 } else { session.retryPlayback() }
             },
             onTryNextSource: {
-                // Skip the current mirror and open the next healthy candidate.
-                // Soft banner only — never a dead-end OK alert.
-                model.resetRecovery()
-                model.supersedeSourceSelection()
-                session.supersedeSourceSwitch()
-                sourceSwitchTask?.cancel()
-                let requestID = UUID()
-                sourceSwitchRequestID = requestID
-                withAnimation {
-                    sourceSwitchStatus = .switching("Next available source")
-                }
-                saveProgress()
-                session.beginSourceSwitch()
-                sourceSwitchTask = Task {
-                    let recovered = await model.recover { stream in
-                        guard !Task.isCancelled,
-                              sourceSwitchRequestID == requestID else {
-                            return false
-                        }
-                        return await session.switchSource(
-                            stream,
-                            externalSubtitles: model.allSubtitles
-                        )
-                    }
-                    guard !Task.isCancelled,
-                          sourceSwitchRequestID == requestID else { return }
-                    if recovered {
-                        withAnimation {
-                            let name = model.streams.first {
-                                $0.id == model.selectedSourceID
-                            }?.candidate.providerName ?? "Source"
-                            sourceSwitchStatus = .succeeded(name)
-                        }
-                        try? await Task.sleep(for: .seconds(1.4))
-                        guard !Task.isCancelled,
-                              sourceSwitchRequestID == requestID else { return }
-                        withAnimation { sourceSwitchStatus = nil }
-                    } else {
-                        session.cancelSourceSwitch(resumePrevious: true)
-                        withAnimation {
-                            sourceSwitchStatus = .failed(
-                                "No other sources worked — pick one from Playback Settings"
-                            )
-                        }
-                        try? await Task.sleep(for: .seconds(2.4))
-                        guard !Task.isCancelled,
-                              sourceSwitchRequestID == requestID else { return }
-                        withAnimation { sourceSwitchStatus = nil }
-                    }
-                    if sourceSwitchRequestID == requestID {
-                        sourceSwitchTask = nil
-                    }
-                }
+                switchToNextSource()
             },
             onZoomChanged: {
                 library.updatePlayerZoomedToFill($0, for: model.request)
@@ -1699,6 +1704,21 @@ struct PlayerScreen: View {
         }
         .onChange(of: session.playbackRate) { _, rate in
             library.updatePlaybackRate(rate, for: model.request)
+        }
+        .onChange(of: session.playbackState) { _, state in
+            // A stream that cannot be kept alive at all (hoster down, geo or
+            // referer blocked) should not end on the error card: walk to the
+            // next candidate automatically, capped so a dead batch of sources
+            // still ends on the manual retry/next-source controls.
+            if state == .playing {
+                automaticFailoverCount = 0
+            } else if state == .failed,
+                      automaticFailoverCount < 2,
+                      sourceSwitchTask == nil,
+                      model.streams.count > 1 {
+                automaticFailoverCount += 1
+                switchToNextSource()
+            }
         }
         .onChange(of: model.isLoading) { _, _ in
             finishPendingEpisodeLoadIfReady()

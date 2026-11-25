@@ -46,7 +46,7 @@ struct LivePlayerView: View {
         errorMessage = nil
         do {
             let source = try await resolve()
-            let item = AVPlayerItem(asset: Self.asset(for: source))
+            let item = AVPlayerItem(asset: await Self.asset(for: source))
             let player = AVPlayer(playerItem: item)
             player.automaticallyWaitsToMinimizeStalling = true
             self.player = player
@@ -56,7 +56,13 @@ struct LivePlayerView: View {
         }
     }
 
-    static func asset(for source: PlaybackSource) -> AVURLAsset {
+    static func asset(for source: PlaybackSource) async -> AVURLAsset {
+        // Live hosters key their playlists and segments on Referer, which
+        // AVURLAssetHTTPHeaderFieldsKey does not forward to HLS subrequests,
+        // so remote streams always go through the loopback header proxy.
+        if let proxied = await HLSProxyServer.shared.proxiedURL(for: source.url, headers: source.headers) {
+            return AVURLAsset(url: proxied)
+        }
         guard !source.headers.isEmpty else { return AVURLAsset(url: source.url) }
         return AVURLAsset(url: source.url, options: ["AVURLAssetHTTPHeaderFieldsKey": source.headers])
     }

@@ -2568,7 +2568,7 @@ enum HLSSubtitleInjector {
                     languageTag: languageTags[index]
                 )
             }
-            let master = rewrittenMasterPlaylist(
+            let rewrittenMaster = rewrittenMasterPlaylist(
                 playlist,
                 sourceURL: sourceURL,
                 renditions: manifestRenditions,
@@ -2576,6 +2576,13 @@ enum HLSSubtitleInjector {
                 selectedQualityHeight: selectedQualityHeight,
                 primarySubtitleLanguage: primarySubtitleLanguage,
                 secondarySubtitleLanguage: secondarySubtitleLanguage
+            )
+            // Remote variant and rendition URIs must reach the player through
+            // the stream proxy: AVPlayer would otherwise fetch them without the
+            // extractor headers and most hosters answer with 403.
+            let master = await HLSProxyServer.shared.rewriteRemoteURLs(
+                in: rewrittenMaster,
+                headers: source.headers
             )
             try Data(master.utf8).write(to: masterURL, options: .atomic)
             for (index, rendition) in renditions.enumerated() {
