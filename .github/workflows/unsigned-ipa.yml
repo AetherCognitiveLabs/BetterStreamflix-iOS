@@ -29,11 +29,43 @@ jobs:
             VERSION="$(sed -nE 's/.*MARKETING_VERSION: ([0-9]+(\.[0-9]+){0,2}).*/\1/p' project.yml | head -1)"
           fi
           echo "Building version $VERSION build $RUN_NUMBER"
-          BUILD_VERSION="$VERSION" BUILD_NUMBER="$RUN_NUMBER" bash build-unsigned-ipa.sh
+          set -o pipefail
+          BUILD_VERSION="$VERSION" BUILD_NUMBER="$RUN_NUMBER" bash build-unsigned-ipa.sh 2>&1 | tee build-output.log
 
       - name: Upload IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-ipa
           path: build/unsigned-ipa/**/*.ipa
           if-no-files-found: error
+
+      - name: Publish build status
+        if: always()
+        run: |
+          CONCLUSION="${{ job.status }}"
+          mkdir -p status-out
+          if [ -f build-output.log ]; then
+            tail -c 60000 build-output.log > status-out/last-build.log
+          else
+            echo "no build log captured" > status-out/last-build.log
+          fi
+          VERSION="$(sed -nE 's/.*MARKETING_VERSION: ([0-9]+(\.[0-9]+){0,2}).*/\1/p' project.yml | head -1)"
+          printf '{\n  "sha": "%s",\n  "run": %s,\n  "conclusion": "%s",\n  "version": "%s",\n  "time": "%s"\n}\n' \
+            "${{ github.sha }}" "${{ github.run_number }}" "$CONCLUSION" "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > status-out/status.json
+          REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          if git clone --depth 1 --branch ci-status "$REPO_URL" ci-status-repo 2>/dev/null; then
+            cd ci-status-repo
+          else
+            git clone --depth 1 "$REPO_URL" ci-status-repo
+            cd ci-status-repo
+            git checkout --orphan ci-status
+            git rm -rf . -q 2>/dev/null || true
+          fi
+          cp ../status-out/status.json ../status-out/last-build.log .
+          git config user.name "Eli Paul"
+          git config user.email "eli.paul.yooo@gmail.com"
+          git add status.json last-build.log
+          git commit -q -m "Build ${{ github.run_number }}: $CONCLUSION" || echo "nothing to commit"
+          git push -q origin ci-status
