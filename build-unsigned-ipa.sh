@@ -48,7 +48,7 @@ fi
 PBX_MATCHES="$(grep -Ec 'MARKETING_VERSION = [0-9]+([.][0-9]+){0,2};' "$PROJECT_FILE" || true)"
 YAML_MATCHES="$(grep -Ec 'MARKETING_VERSION: [0-9]+([.][0-9]+){0,2}$' "$PROJECT_YAML" || true)"
 
-if [[ "$PBX_MATCHES" -lt 1 || "$YAML_MATCHES" -ne 1 ]]; then
+if [[ "$PBX_MATCHES" -lt 1 || "$YAML_MATCHES" -lt 1 ]]; then
     echo "Could not safely locate all project version settings; no files were changed." >&2
     exit 1
 fi
