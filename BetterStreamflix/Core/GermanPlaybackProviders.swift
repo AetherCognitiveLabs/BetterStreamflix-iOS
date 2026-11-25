@@ -637,7 +637,7 @@ struct HDFilmePlaybackProvider: GermanPlaybackProvider {
     var displayName: String { "HDFilme" }
     var baseURL: URL { Self.base }
 
-    private static let base = URL(string: "https://hd-filme.one/")!
+    private static let base = URL(string: "https://hd-filme.today/")!
     private static let sitemaps = ["news_pages.xml", "news_pages2.xml"]
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
