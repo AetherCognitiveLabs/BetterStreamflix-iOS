@@ -17,6 +17,7 @@ final class HLSProxyServer {
     private var tokensByCanonicalHeaders: [String: String] = [:]
     private var requestBuffers: [ObjectIdentifier: Data] = [:]
     private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var activeFetches: [ObjectIdentifier: ProxyFetchHandler] = [:]
 
     private init() {}
 
@@ -49,7 +50,7 @@ final class HLSProxyServer {
         let prefix = "http://127.0.0.1:\(port.rawValue)/p/\(token)/"
         var output: [String] = []
         for line in playlist.components(separatedBy: "\n") {
-            output.append(rewriteLine(line, base: nil, prefix: prefix))
+            output.append(Self.rewriteLine(line, base: nil, prefix: prefix))
         }
         return output.joined(separator: "\n")
     }
@@ -107,6 +108,9 @@ final class HLSProxyServer {
                 case .failed, .cancelled:
                     self?.connections.removeValue(forKey: identifier)
                     self?.requestBuffers.removeValue(forKey: identifier)
+                    // AVPlayer probes and aborts connections freely; the upstream
+                    // download must not keep burning bandwidth afterwards.
+                    self?.activeFetches.removeValue(forKey: identifier)?.cancel()
                 default: break
                 }
             }
@@ -193,6 +197,11 @@ final class HLSProxyServer {
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue(HTTPClient.desktopUserAgent, forHTTPHeaderField: "User-Agent")
         }
+        // Passthrough streaming must not decompress in flight: the forwarded
+        // Content-Length would no longer match the body AVPlayer receives.
+        if request.value(forHTTPHeaderField: "Accept-Encoding") == nil {
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        }
         if let rangeHeader, request.value(forHTTPHeaderField: "Range") == nil {
             request.setValue(rangeHeader, forHTTPHeaderField: "Range")
         }
@@ -203,6 +212,7 @@ final class HLSProxyServer {
             targetIsPlaylist: target.pathExtension.lowercased() == "m3u8",
             connection: connection
         )
+        activeFetches[ObjectIdentifier(connection)] = handler
         let configuration = URLSessionConfiguration.default
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -237,21 +247,27 @@ final class HLSProxyServer {
     }
 
     private nonisolated static func rewriteURIAttributes(in line: String, base: URL?, prefix: String) -> String {
-        var result = line
-        var searchStart = result.startIndex
-        while let uriRange = result.range(of: "URI=\"", range: searchStart..<result.endIndex) {
+        // Indices stay in the immutable input string; mutating a copy while
+        // keeping its indices would invalidate them.
+        var output = ""
+        var cursor = line.startIndex
+        while let uriRange = line.range(of: "URI=\"", range: cursor..<line.endIndex) {
             let valueStart = uriRange.upperBound
-            guard let closingQuote = result[valueStart...].firstIndex(of: "\"") else { break }
-            let value = String(result[valueStart..<closingQuote])
-            if !value.hasPrefix("http://127.0.0.1"), let resolved = resolve(value, base: base) {
-                let replacement = proxyURLString(for: resolved, prefix: prefix)
-                result.replaceSubrange(valueStart..<closingQuote, with: replacement)
-                searchStart = result.index(valueStart, offsetBy: replacement.count, limitedBy: result.endIndex) ?? result.endIndex
-            } else {
-                searchStart = closingQuote
+            guard let closingQuote = line[valueStart...].firstIndex(of: "\"") else {
+                output += line[cursor...]
+                return output
             }
+            let value = String(line[valueStart..<closingQuote])
+            output += line[cursor..<valueStart]
+            if !value.hasPrefix("http://127.0.0.1"), let resolved = resolve(value, base: base) {
+                output += proxyURLString(for: resolved, prefix: prefix)
+            } else {
+                output += value
+            }
+            cursor = closingQuote
         }
-        return result
+        output += line[cursor...]
+        return output
     }
 
     private nonisolated static func resolve(_ uri: String, base: URL?) -> URL? {
@@ -311,6 +327,11 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
         self.connection = connection
     }
 
+    @MainActor func cancel() {
+        task?.cancel()
+        session?.invalidateAndCancel()
+    }
+
     func urlSession(
         _ session: URLSession,
         dataTask: URLSessionDataTask,
@@ -330,6 +351,7 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
         baseURL = response.url
         let contentType = responseHeaders["content-type"]?.lowercased() ?? ""
         isPlaylist = targetIsPlaylist
+            || response.url?.pathExtension.lowercased() == "m3u8"
             || contentType.contains("mpegurl")
             || contentType.contains("m3u8")
         headSent = false
