@@ -1024,7 +1024,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     private func tmdbAccessToken() throws -> String {
-        if let stored = try? tmdbCredentials.read(), let stored, !stored.isEmpty { return stored }
+        if let stored = try? tmdbCredentials.read(), !stored.isEmpty { return stored }
         guard let bundled = Bundle.main.object(forInfoDictionaryKey: "TMDBReadAccessToken") as? String else {
             throw TMDBError.missingAccessToken
         }
