@@ -287,6 +287,19 @@ struct PlaybackSource: Sendable {
     let headers: [String: String]
     let subtitles: [SubtitleSource]
     let preferredPeakBitRate: Double?
+
+    init(url: URL, headers: [String: String], subtitles: [SubtitleSource], preferredPeakBitRate: Double?) {
+        self.url = url
+        // Verified against live hoster CDNs (dropcdn, cloudwindow): signed media
+        // URLs reject requests carrying Accept-Language with 403 — the identical
+        // request without it plays. Extraction legitimately uses the header for
+        // embed pages, but it must never reach the CDN. Strip it centrally so
+        // direct progressive playback, the HLS proxy and the subtitle injection
+        // fetches all benefit.
+        self.headers = headers.filter { $0.key.lowercased() != "accept-language" }
+        self.subtitles = subtitles
+        self.preferredPeakBitRate = preferredPeakBitRate
+    }
 }
 
 struct SubtitleSource: Identifiable, Hashable, Sendable {

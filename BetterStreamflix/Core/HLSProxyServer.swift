@@ -220,7 +220,14 @@ final class HLSProxyServer {
         )
         var request = URLRequest(url: target)
         if headOnly { request.httpMethod = "HEAD" }
-        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        for (name, value) in headers {
+            // Verified against live hoster CDNs (dropcdn, cloudwindow): the signed
+            // URL validation rejects requests carrying Accept-Language with 403,
+            // while the identical request without it returns 200. Browser media
+            // subrequests don't send it either — never forward it upstream.
+            if name.lowercased() == "accept-language" { continue }
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue(HTTPClient.desktopUserAgent, forHTTPHeaderField: "User-Agent")
         }
