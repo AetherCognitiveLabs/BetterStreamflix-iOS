@@ -312,6 +312,9 @@ final class PlaybackDiscovery {
         PlaybackStartupTrace.mark(
             "candidate RESOLVED id=\(candidate.id) duration=\(PlaybackStartupTrace.duration(since: perfStart))ms"
         )
+        PlaybackDiagnosticsLog.log(
+            "RESOLVED-URL \(source.url.absoluteString) headers=[\(source.headers.keys.sorted().joined(separator: ","))]"
+        )
 
         try Task.checkCancellation()
         // Android hands the master URL to Exo without isPlayable / HLS quality
