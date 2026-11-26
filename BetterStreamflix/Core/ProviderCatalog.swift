@@ -327,7 +327,16 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
 
     func matches(providerID: String) -> Bool {
         let lowered = providerID.lowercased()
-        return registryMatchIDs.contains { lowered == $0 || lowered.hasPrefix($0) }
+        return registryMatchIDs.contains { matchID in
+            if lowered == matchID { return true }
+            // Prefix matching exists for suffix variants like "moflix-stream-x",
+            // but the character after the prefix must not be alphanumeric —
+            // otherwise the German "vavoovod" also matches "vavoovodEn" and the
+            // language gate leaks every sibling language into German playback.
+            guard lowered.hasPrefix(matchID), lowered.count > matchID.count else { return false }
+            let next = lowered[lowered.index(lowered.startIndex, offsetBy: matchID.count)]
+            return !next.isLetter && !next.isNumber
+        }
     }
 
     static func sources(in group: ProviderLanguageGroup) -> [PlaybackSourcePreferenceID] {
