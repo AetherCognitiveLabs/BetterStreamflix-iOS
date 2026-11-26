@@ -244,7 +244,65 @@ enum GermanTitleMatching {
             guard wanted.count >= 2 else { continue }
             if value == wanted { return true }
             guard allowPartial else { continue }
-            if contains(value, word: wanted) || contains(wanted, word: value) { return true }
+            if strictTokenMatch(candidate: value, wanted: wanted) { return true }
+        }
+        return false
+    }
+
+    /// Non-significant words ignored for coverage — articles and site junk carry
+    /// no information about which title it is.
+    private static let stopTokens: Set<String> = [
+        "der", "die", "das", "den", "dem", "ein", "eine", "einer", "eines", "und", "the",
+        "a", "an", "of", "to", "in", "on", "at", "von", "zu", "zum", "zur", "im", "am",
+        "film", "movie", "stream", "online", "deutsch", "german", "kostenlos", "hd",
+    ]
+
+    static func significantTokens(_ normalized: String) -> Set<String> {
+        Set(normalized.split(separator: " ").map(String.init).filter {
+            $0.count >= 2 && !stopTokens.contains($0)
+        })
+    }
+
+    /// Token-coverage matching: every significant token of the wanted title must
+    /// appear in the candidate, and most of the candidate's significant tokens
+    /// must belong to the wanted title. "Spider-Man" (2/5 tokens) no longer
+    /// hijacks "Spider-Man: Brand New Day", while site suffixes stripped earlier
+    /// and word-order or punctuation differences still pass.
+    static func strictTokenMatch(candidate value: String, wanted: String) -> Bool {
+        let wantedTokens = significantTokens(wanted)
+        let candidateTokens = significantTokens(value)
+        guard !wantedTokens.isEmpty else { return false }
+        if candidateTokens.isEmpty {
+            // A candidate reduced to pure stopwords ("Der Film") can only be
+            // accepted on exact containment, never coverage.
+            return false
+        }
+        let junkTokens: Set<String> = [
+            "trailer", "teaser", "making", "interview", "review", "kritik", "doku",
+            "dokumentation", "reportage", "behind", "scenes", "featurette", "podcast",
+            "hoerspiel", "hörbuch", "podcast", "backstage", "premiere", "event",
+        ]
+        let wantedJunk = wantedTokens.intersection(junkTokens)
+        let candidateJunk = candidateTokens.intersection(junkTokens)
+        if wantedJunk.isEmpty, !candidateJunk.isEmpty { return false }
+        let wantedCovered = wantedTokens.intersection(candidateTokens).count
+        guard wantedCovered == wantedTokens.count else { return false }
+        let candidateCovered = candidateTokens.intersection(wantedTokens).count
+        let ratio = Double(candidateCovered) / Double(candidateTokens.count)
+        return ratio >= 0.6
+    }
+
+    /// Full token-set equality in both directions — no extra significant words on
+    /// either side. Safe enough to accept without a year, unlike partial matches.
+    static func strictlyEqual(_ candidate: String, titles: [String]) -> Bool {
+        let value = normalizeTitle(strippedTitle(candidate))
+        guard !value.isEmpty else { return false }
+        let candidateTokens = significantTokens(value)
+        guard !candidateTokens.isEmpty else { return false }
+        for title in titles {
+            let wantedTokens = significantTokens(normalizeTitle(title))
+            guard !wantedTokens.isEmpty else { continue }
+            if candidateTokens == wantedTokens { return true }
         }
         return false
     }

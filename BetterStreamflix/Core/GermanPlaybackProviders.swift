@@ -207,6 +207,14 @@ enum GermanScrape {
             if context.request.media.kind == .series {
                 return titled.first?.url
             }
+            // Most streaming-site search results expose no year at all. A full
+            // token-set equality is still safe without one — only partial matches
+            // are dangerous ("Spider-Man" hijacking "Brand New Day").
+            if let equal = titled.first(where: {
+                $0.year == nil && GermanTitleMatching.strictlyEqual($0.title, titles: context.titles)
+            }) {
+                return equal.url
+            }
             return nil
         }
         return titled.first?.url
