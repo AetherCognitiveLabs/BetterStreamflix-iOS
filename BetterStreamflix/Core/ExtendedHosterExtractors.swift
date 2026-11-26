@@ -31,9 +31,12 @@ enum ExtendedHosterExtractor {
                "bysekoze", "bysesayeveum", "moflix-stream"]) {
             return try await filemoon(url)
         }
-        if matches(["supervideo"]) {
+        if matches(["supervideo", "superplayer"]) {
             return try await packed(url, referer: referer, providerID: "supervideo",
                                     filePattern: #"file\s*:\s*["']([^"']+)["']"#, refererOverride: "https://supervideo.cc")
+        }
+        if matches(["mixdrop", "mxdrop", "m1xdrop", "miiixdrop", "miixdrop", "dropstream"]) {
+            return try await mixdrop(url, referer: referer)
         }
         if matches(["dropload", "dr0pstream"]) {
             return try await packed(url, referer: referer, providerID: "dropload",
@@ -284,6 +287,39 @@ enum ExtendedHosterExtractor {
         "hanerix", "hlswish", "swiftplayers", "eb8gfmjn71", "edbrdl7pab",
         "kinoger.be", "voe.sx", "wish",
     ]
+
+    /// MixDrop family: `/f/` share links become `/e/` embeds; the unpacked eval
+    /// block exposes the MP4 as `wurl = "…"` (often protocol-relative).
+    private static func mixdrop(_ link: URL, referer: URL?) async throws -> PlaybackSource {
+        var raw = link.absoluteString
+            .replacingOccurrences(of: "/f/", with: "/e/")
+            .replacingOccurrences(of: ".club/", with: ".ag/")
+        if let range = raw.range(of: #"(?i)^(https?://[^/]+/e/[^/?#]+)"#, options: .regularExpression) {
+            raw = String(raw[range])
+        }
+        guard let embedURL = URL(string: raw) else { throw AppError.noStream }
+        let html = try await http.page(embedURL, referer: referer ?? embedURL)
+        let texts = unpackedScripts(in: html) + [html]
+        for text in texts {
+            guard let wurl = AnimeHTML.captures(#"wurl.*?=.*?"(.*?)";"#, in: text).first?[1] else { continue }
+            let full: String
+            if wurl.hasPrefix("//") {
+                full = "https:" + wurl
+            } else if wurl.hasPrefix("http") {
+                full = wurl
+            } else {
+                full = "https://" + wurl
+            }
+            guard let source = URL(string: full) else { continue }
+            return PlaybackSource(
+                url: source,
+                headers: headers(referer: link.absoluteString, origin: embedURL.origin),
+                subtitles: [],
+                preferredPeakBitRate: nil
+            )
+        }
+        throw AppError.noStream
+    }
 
     private static func streamWish(_ url: URL, referer: URL?) async throws -> PlaybackSource {
         let html = try await http.page(url, referer: referer ?? url)
