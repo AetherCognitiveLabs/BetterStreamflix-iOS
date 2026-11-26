@@ -3665,12 +3665,13 @@ private extension PlaybackSource {
     func preferredForSubtitleLanguage(_ languageCode: String) -> PlaybackSource {
         guard !languageCode.isEmpty,
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return self }
+        // Never append a language param: hoster CDN URLs are signed over the exact
+        // query string, so any added parameter invalidates the signature and every
+        // media request fails with 403. Only replace the param where the URL already
+        // carries one (vixcloud generates those itself).
         var queryItems = components.queryItems ?? []
-        if let index = queryItems.firstIndex(where: { $0.name == "language" }) {
-            queryItems[index] = URLQueryItem(name: "language", value: languageCode)
-        } else {
-            queryItems.append(URLQueryItem(name: "language", value: languageCode))
-        }
+        guard let index = queryItems.firstIndex(where: { $0.name == "language" }) else { return self }
+        queryItems[index] = URLQueryItem(name: "language", value: languageCode)
         components.queryItems = queryItems
         guard let preferredURL = components.url else { return self }
         var preferredHeaders = headers
