@@ -1567,6 +1567,28 @@ struct PlayerScreen: View {
                 .zIndex(40)
                 .allowsHitTesting(true)
         }
+        .overlay(alignment: .topLeading) {
+            // Persistent exit control: native AVKit chrome is hidden until playback
+            // is ready, so without this there is no way out of a hanging player.
+            Button {
+                saveProgress(markNearEndFinished: true)
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay {
+                        Circle().stroke(Color.white.opacity(0.16), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close player")
+            .padding(.leading, 16)
+            .padding(.top, ScreenMetrics.topSafeAreaInset + 10)
+            .zIndex(95)
+        }
         .overlay(
             alignment: .bottomTrailing
         ) {
