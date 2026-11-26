@@ -439,29 +439,38 @@ enum HosterExtractor {
             return try await meinecloud(url, referer: referer, depth: depth)
         }
         if isDoodHost(host) || hint.contains("dood") {
-            return try await doodStream(url)
+            if let source = try? await doodStream(url) { return source }
         }
         if isVoeHost(host) || hint.contains("voe") {
-            return try await voe(url)
+            if let source = try? await voe(url) { return source }
         }
         if host.contains("streamtape") || host.contains("streamta") || hint.contains("streamtape") {
-            return try await streamtape(url)
+            if let source = try? await streamtape(url) { return source }
         }
         if host.contains("vidoza") || host.contains("videzz") || hint.contains("vidoza") {
-            return try await vidoza(url)
+            if let source = try? await vidoza(url) { return source }
         }
         if host.contains("vidara") || hint.contains("vidara") {
-            return try await vidara(url)
+            if let source = try? await vidara(url) { return source }
         }
         if host.contains("vidsonic") || hint.contains("vidsonic") {
-            return try await vidsonic(url)
+            if let source = try? await vidsonic(url) { return source }
         }
-        if let extended = try await ExtendedHosterExtractor.resolve(
+        if let extended = try? await ExtendedHosterExtractor.resolve(
             url, referer: referer, serverName: serverName, depth: depth
         ) {
             return extended
         }
-        return try await generic(url, referer: referer, depth: depth)
+        do {
+            return try await generic(url, referer: referer, depth: depth)
+        } catch {
+            // Obfuscated/JS-only players (VOE mirrors, popunder chains) hide the
+            // video URL from plain HTTP entirely — a real webview is the last resort.
+            if depth == 0, let sniffed = await WebViewStreamSniffer.shared.sniff(url, referer: referer) {
+                return sniffed
+            }
+            throw error
+        }
     }
 
     static func resolveFirst(_ mirrors: [HosterMirror], referer: URL?) async throws -> PlaybackSource {
