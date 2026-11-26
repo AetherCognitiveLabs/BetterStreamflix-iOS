@@ -215,6 +215,9 @@ final class HLSProxyServer {
         proxyPrefix: String,
         on connection: NWConnection
     ) {
+        PlaybackDiagnosticsLog.log(
+            "PROXY fetch \(target.absoluteString) headers=[\(headers.keys.sorted().joined(separator: ","))] ua=\(headers["User-Agent"]?.prefix(30) ?? "none") ref=\(headers["Referer"] ?? "none")"
+        )
         var request = URLRequest(url: target)
         if headOnly { request.httpMethod = "HEAD" }
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
@@ -373,11 +376,9 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
             responseHeaders = headers
         }
         baseURL = response.url
-        if responseStatus != 200, responseStatus != 206 {
-            PlaybackDiagnosticsLog.log(
-                "PROXY upstream status \(responseStatus) for \(response.url?.host ?? "?")"
-            )
-        }
+        PlaybackDiagnosticsLog.log(
+            "PROXY upstream status \(responseStatus) for \(response.url?.host ?? "?")"
+        )
         let contentType = responseHeaders["content-type"]?.lowercased() ?? ""
         isPlaylist = targetIsPlaylist
             || response.url?.pathExtension.lowercased() == "m3u8"
