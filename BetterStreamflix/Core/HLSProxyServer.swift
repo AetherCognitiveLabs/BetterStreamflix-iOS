@@ -26,10 +26,16 @@ final class HLSProxyServer {
         for connection in connections.values { connection.cancel() }
     }
 
-    /// Default-off while device verification is pending: playback must never depend
-    /// on the loopback proxy unless the user explicitly enables it in Settings.
+    /// Verified against live hoster CDNs (dropcdn): signed stream URLs reject any
+    /// request without the extractor's UA+Referer — including AVPlayer's HLS
+    /// subrequests, which never inherit AVURLAssetHTTPHeaderFieldsKey. The proxy
+    /// is therefore required for hoster playback and stays on unless the user
+    /// explicitly disables it in Settings.
     static var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "playback.hlsProxy.enabled")
+        if UserDefaults.standard.object(forKey: "playback.hlsProxy.enabled") != nil {
+            return UserDefaults.standard.bool(forKey: "playback.hlsProxy.enabled")
+        }
+        return true
     }
 
     func proxiedURL(for url: URL, headers: [String: String]) async -> URL? {
