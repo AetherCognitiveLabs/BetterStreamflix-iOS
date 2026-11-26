@@ -31,6 +31,28 @@ enum ProviderSmoke {
         episode: nil
     )
 
+    static let seriesSampleRequest = PlaybackRequest(
+        media: MediaItem(
+            id: "tmdb:tv:119051",
+            providerID: "tmdb",
+            kind: .series,
+            title: "Wednesday",
+            releaseDate: "2022-11-23",
+            imdbID: "tt13443470",
+            tmdbID: 119051
+        ),
+        episode: MediaEpisode(
+            id: "tmdb:tv:119051-s1e1",
+            providerID: "tmdb",
+            showID: "tmdb:tv:119051",
+            seasonNumber: 1,
+            number: 1,
+            title: "Wednesday's Child Is Full of Woe",
+            overview: nil,
+            posterURL: nil
+        )
+    )
+
     struct RegistryReport: Sendable {
         let totalProviders: Int
         let duplicateIDs: [String]
@@ -102,10 +124,17 @@ enum ProviderSmoke {
         health: ProviderHealth = .shared
     ) async -> [Result] {
         typealias Job = (id: String, timeout: TimeInterval, operation: @Sendable () async throws -> Int)
-        let context = PlaybackLookupContext(request: sampleRequest)
+        let movieContext = PlaybackLookupContext(request: sampleRequest)
+        let seriesContext = PlaybackLookupContext(request: seriesSampleRequest)
         var jobs: [Job] = playback.map { provider in
             let german = PlaybackSourcePreferenceID.allCases
                 .first { $0.matches(providerID: provider.id) }?.languageGroup == .german
+            // Series-only providers must be probed with a series — a movie sample
+            // structurally yields zero and was mistaken for breakage.
+            let seriesOnly = provider is SerienStreamPlaybackProvider
+                || provider is AniWorldPlaybackProvider
+                || (provider as? CfGenericPlaybackProvider)?.supportsMovies == false
+            let context = seriesOnly ? seriesContext : movieContext
             return (provider.id, german ? serversTimeoutGerman : serversTimeout, {
                 try await provider.candidates(for: context).count
             })
