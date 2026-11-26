@@ -116,6 +116,7 @@ final class HLSProxyServer {
             if let listenerError { throw listenerError }
             try await Task.sleep(for: .milliseconds(10))
         }
+        PlaybackDiagnosticsLog.log("PROXY listener failed to start")
         throw AppError.providerUnavailable("The local stream proxy did not start.")
     }
 
@@ -181,6 +182,9 @@ final class HLSProxyServer {
             }
         }
         let isHead = parts[0] == "HEAD"
+        PlaybackDiagnosticsLog.log(
+            "PROXY req \(target.host ?? "?")\(target.path.suffix(40)) playlist=\(target.pathExtension.lowercased() == "m3u8")"
+        )
         let port = listenerPort
         fetch(
             target: target,
@@ -369,6 +373,11 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
             responseHeaders = headers
         }
         baseURL = response.url
+        if responseStatus != 200, responseStatus != 206 {
+            PlaybackDiagnosticsLog.log(
+                "PROXY upstream status \(responseStatus) for \(response.url?.host ?? "?")"
+            )
+        }
         let contentType = responseHeaders["content-type"]?.lowercased() ?? ""
         isPlaylist = targetIsPlaylist
             || response.url?.pathExtension.lowercased() == "m3u8"
@@ -406,6 +415,7 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
         lock.unlock()
 
         if let error, (error as NSError).domain == NSURLErrorDomain, (error as NSError).code != NSURLErrorCancelled {
+            PlaybackDiagnosticsLog.log("PROXY upstream error: \(error.localizedDescription)")
             if !alreadySentHead {
                 sendSimpleError(status: "502 Bad Gateway")
             }

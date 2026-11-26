@@ -2625,6 +2625,23 @@ final class PlayerSession: ObservableObject {
     }
 
     private func handleItemFailure() {
+        if let item = player.currentItem, let error = item.error {
+            PlaybackDiagnosticsLog.log(
+                "PLAYER item failed: \(error.localizedDescription) [\((error as NSError).domain) \((error as NSError).code)]"
+            )
+            if let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError {
+                PlaybackDiagnosticsLog.log("PLAYER underlying: \(underlying.localizedDescription) [\(underlying.domain) \(underlying.code)]")
+            }
+        } else {
+            PlaybackDiagnosticsLog.log("PLAYER item failed: no error detail")
+        }
+        if let logEvents = player.currentItem?.errorLog()?.events.suffix(3) {
+            for event in logEvents {
+                PlaybackDiagnosticsLog.log(
+                    "PLAYER errorlog: \(event.errorComment ?? "?") status=\(event.errorStatusCode) uri=\(event.uri?.suffix(60) ?? "?")"
+                )
+            }
+        }
         // A signed HLS item can fail while paused. AVPlayer does not publish the
         // same status transition again when its system Play button is pressed,
         // leaving the crossed-out play icon stuck unless we replace the item.

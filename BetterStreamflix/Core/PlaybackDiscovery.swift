@@ -7,6 +7,7 @@ enum PlaybackStartupTrace {
 
     static func mark(_ message: String) {
         print("PLAYBACK PERF [\(now())] \(message)")
+        PlaybackDiagnosticsLog.log(message)
     }
 
     static func duration(since start: Int) -> Int {
@@ -357,6 +358,9 @@ final class PlaybackDiscovery {
                                         provider.id,
                                         "count=\(candidates.count)"
                                     )
+                                    PlaybackDiagnosticsLog.log(
+                                        "provider \(provider.id): \(candidates.count) candidates"
+                                    )
 
                                     for candidate in candidates {
                                         print(
@@ -389,6 +393,9 @@ final class PlaybackDiscovery {
                                                         candidate.providerName,
                                                         candidate.preference.serverName,
                                                         error
+                                                    )
+                                                    PlaybackDiagnosticsLog.log(
+                                                        "REJECTED \(candidate.providerName)/\(candidate.preference.serverName): \(error.localizedDescription)"
                                                     )
                                                     return nil
                                                 }

@@ -10,6 +10,8 @@ struct ProviderDiagnosticsView: View {
     @State private var isRunning = false
     @State private var includeLive = true
     @State private var startedAt: Date?
+    @State private var logCopied = false
+    @State private var logVersion = 0
 
     private var passed: Int { results.filter(\.ok).count }
 
@@ -27,6 +29,7 @@ struct ProviderDiagnosticsView: View {
                 .padding(.top, 8)
                 summaryCard
                 if !results.isEmpty { resultsSection }
+                playbackLogSection
             }
             .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
             .padding(.bottom, 120)
@@ -40,6 +43,69 @@ struct ProviderDiagnosticsView: View {
             if ProcessInfo.processInfo.arguments.contains("-runDiagnostics"), results.isEmpty { await run() }
         }
         #endif
+    }
+
+    private var playbackLogSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Playback Log")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = PlaybackDiagnosticsLog.export()
+                    logCopied = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.6))
+                        logCopied = false
+                    }
+                } label: {
+                    Label(logCopied ? "Copied" : "Copy", systemImage: logCopied ? "checkmark" : "doc.on.doc")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(logCopied ? Color(hex: 0x4CC9A6).opacity(0.3) : environment.theme.accentBright.opacity(0.3), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button {
+                    PlaybackDiagnosticsLog.clear()
+                    logVersion += 1
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.white.opacity(0.1), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Reproduce the playback problem first, then copy this log and send it.")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(.white.opacity(0.55))
+            let entries = PlaybackDiagnosticsLog.entries().suffix(80)
+            if entries.isEmpty {
+                Text("No playback events recorded yet.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(entries).reversed()) { entry in
+                        Text(entry.message)
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(12)
+                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .id(logVersion)
     }
 
     private var summaryCard: some View {

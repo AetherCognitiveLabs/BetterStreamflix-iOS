@@ -54,6 +54,7 @@
 		B29E960129BE1FE19D717A60 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 341151F21A927E13A2C2827E /* ProfilesView.swift */; };
 		30A1E81809761C381809705C /* Profiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */; };
 		EEE3A6A39E99C04F45D2C4EB /* ProviderSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A0718531DA898DD62C2312 /* ProviderSmoke.swift */; };
+		6BE1679F6AE28652EB6FA7CD /* PlaybackDiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B55C9D15CE74215E74FDF27 /* PlaybackDiagnosticsLog.swift */; };
 		AC0B740303A1A4EDA1242C2C /* VavooSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454364E54CD8415C3FAF89F7 /* VavooSignature.swift */; };
 		A976D66503674927AE90E7E4 /* LiveEPG.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */; };
 		2A6666F34BCCF0A848EABE2E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CA0E821E310FCB2994282C1 /* DownloadManager.swift */; };
@@ -213,6 +214,7 @@
 		341151F21A927E13A2C2827E /* ProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesView.swift; sourceTree = "<group>"; };
 		0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profiles.swift; sourceTree = "<group>"; };
 		22A0718531DA898DD62C2312 /* ProviderSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSmoke.swift; sourceTree = "<group>"; };
+		4B55C9D15CE74215E74FDF27 /* PlaybackDiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnosticsLog.swift; sourceTree = "<group>"; };
 		454364E54CD8415C3FAF89F7 /* VavooSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VavooSignature.swift; sourceTree = "<group>"; };
 		8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveEPG.swift; sourceTree = "<group>"; };
 		2CA0E821E310FCB2994282C1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
@@ -368,6 +370,7 @@
 				F92571B363410293999CCBDF /* CloudSync.swift */,
 				0FB33E1B0347E8AB4440DAA9 /* Profiles.swift */,
 				22A0718531DA898DD62C2312 /* ProviderSmoke.swift */,
+				4B55C9D15CE74215E74FDF27 /* PlaybackDiagnosticsLog.swift */,
 				454364E54CD8415C3FAF89F7 /* VavooSignature.swift */,
 				8359C4E1D965D33A5F89CD27 /* LiveEPG.swift */,
 				2CA0E821E310FCB2994282C1 /* DownloadManager.swift */,
@@ -669,6 +672,7 @@
 				B29E960129BE1FE19D717A60 /* ProfilesView.swift in Sources */,
 				30A1E81809761C381809705C /* Profiles.swift in Sources */,
 				EEE3A6A39E99C04F45D2C4EB /* ProviderSmoke.swift in Sources */,
+				6BE1679F6AE28652EB6FA7CD /* PlaybackDiagnosticsLog.swift in Sources */,
 				AC0B740303A1A4EDA1242C2C /* VavooSignature.swift in Sources */,
 				A976D66503674927AE90E7E4 /* LiveEPG.swift in Sources */,
 				2A6666F34BCCF0A848EABE2E /* DownloadManager.swift in Sources */,
