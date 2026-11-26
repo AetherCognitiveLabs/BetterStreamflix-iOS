@@ -935,6 +935,7 @@ enum HosterExtractor {
             .replacingOccurrences(of: "\\/", with: "/")
             .replacingOccurrences(of: "\\u0026", with: "&")
             .replacingOccurrences(of: "\\x26", with: "&")
+            .replacingOccurrences(of: "&amp;", with: "&")
         let patterns = [
             #"["']?file["']?\s*[:=]\s*["'](https?://[^"']+\.(?:m3u8|mp4)[^"']*)["']"#,
             #"["']?src["']?\s*[:=]\s*["'](https?://[^"']+\.(?:m3u8|mp4)[^"']*)["']"#,

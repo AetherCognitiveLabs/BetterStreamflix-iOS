@@ -6,6 +6,35 @@ import Foundation
 // requests, so most hoster streams fail in AVPlayer even though extraction
 // succeeded. Routing every playlist and segment through this proxy lets each
 // upstream request carry the extractor's headers, like ExoPlayer does.
+
+/// DNS-over-HTTPS resolution against Cloudflare. German ISPs DNS-block hoster CDN
+/// domains (CUII blocklist): system DNS resolves them to an ISP block server that
+/// answers every request with 403 — extraction succeeds while every media request
+/// fails. Android works because its extractors resolve through DnsResolver.doh;
+/// this brings the same behaviour to proxied media fetches.
+actor DoHResolver {
+    static let shared = DoHResolver()
+    private var cache: [String: (ip: String, expiry: Date)] = [:]
+
+    func resolve(_ host: String) async -> String? {
+        if let hit = cache[host], hit.expiry > Date() { return hit.ip }
+        guard var components = URLComponents(string: "https://1.1.1.1/dns-query") else { return nil }
+        components.queryItems = [URLQueryItem(name: "name", value: host), URLQueryItem(name: "type", value: "A")]
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        request.setValue("application/dns-json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let answers = root["Answer"] as? [[String: Any]] else { return nil }
+        let ip = answers.first(where: { ($0["type"] as? Int) == 1 })?["data"] as? String
+        if let ip {
+            cache[host] = (ip, Date().addingTimeInterval(300))
+        }
+        return ip
+    }
+}
+
 @MainActor
 final class HLSProxyServer {
     static let shared = HLSProxyServer()
@@ -186,14 +215,14 @@ final class HLSProxyServer {
             "PROXY req \(target.host ?? "?")\(target.path.suffix(40)) playlist=\(target.pathExtension.lowercased() == "m3u8")"
         )
         let port = listenerPort
-        fetch(
+        Task { await self.fetch(
             target: target,
             headers: headers,
             rangeHeader: rangeHeader,
             headOnly: isHead,
             proxyPrefix: port.map { "http://127.0.0.1:\($0.rawValue)/p/\(token)/" } ?? "",
             on: connection
-        )
+        ) }
     }
 
     private func targetURL(from components: URLComponents) -> URL? {
@@ -214,12 +243,28 @@ final class HLSProxyServer {
         headOnly: Bool,
         proxyPrefix: String,
         on connection: NWConnection
-    ) {
+    ) async {
         PlaybackDiagnosticsLog.log(
             "PROXY fetch \(target.absoluteString) headers=[\(headers.keys.sorted().joined(separator: ","))] ua=\(headers["User-Agent"]?.prefix(30) ?? "none") ref=\(headers["Referer"] ?? "none")"
         )
-        var request = URLRequest(url: target)
+        var effectiveTarget = target
+        var tlsHost: String?
+        if let host = target.host, !host.isEmpty,
+           host != "127.0.0.1", host != "localhost",
+           host.split(separator: ".").count > 1,
+           let ip = await DoHResolver.shared.resolve(host),
+           var components = URLComponents(url: target, resolvingAgainstBaseURL: false) {
+            components.host = ip
+            if let rewritten = components.url {
+                effectiveTarget = rewritten
+                tlsHost = host
+            }
+        }
+        var request = URLRequest(url: effectiveTarget)
         if headOnly { request.httpMethod = "HEAD" }
+        if let tlsHost {
+            request.setValue(tlsHost, forHTTPHeaderField: "Host")
+        }
         for (name, value) in headers {
             // Verified against live hoster CDNs (dropcdn, cloudwindow): the signed
             // URL validation rejects requests carrying Accept-Language with 403,
@@ -244,7 +289,8 @@ final class HLSProxyServer {
             proxyPrefix: proxyPrefix,
             headOnly: headOnly,
             targetIsPlaylist: target.pathExtension.lowercased() == "m3u8",
-            connection: connection
+            connection: connection,
+            tlsHost: tlsHost
         )
         activeFetches[ObjectIdentifier(connection)] = handler
         let configuration = URLSessionConfiguration.default
@@ -349,16 +395,48 @@ private final class ProxyFetchHandler: NSObject, URLSessionDataDelegate, @unchec
     private var headSent = false
     private var baseURL: URL?
 
+    private let tlsHost: String?
+
     init(
         proxyPrefix: String,
         headOnly: Bool,
         targetIsPlaylist: Bool,
-        connection: NWConnection
+        connection: NWConnection,
+        tlsHost: String? = nil
     ) {
         self.proxyPrefix = proxyPrefix
         self.headOnly = headOnly
         self.targetIsPlaylist = targetIsPlaylist
         self.connection = connection
+        self.tlsHost = tlsHost
+    }
+
+    /// DoH-rewritten requests connect to a bare IP, so the server certificate does
+    /// not match the request URL's host. Re-evaluate the presented chain against the
+    /// original host name instead of disabling validation.
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        guard let host = tlsHost else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        let policy = SecPolicyCreateSSL(true, host as CFString)
+        SecTrustSetPolicies(trust, policy)
+        var error: CFError?
+        if SecTrustEvaluateWithError(trust, &error) {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            PlaybackDiagnosticsLog.log("PROXY tls validation failed for \(host)")
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
     }
 
     @MainActor func cancel() {

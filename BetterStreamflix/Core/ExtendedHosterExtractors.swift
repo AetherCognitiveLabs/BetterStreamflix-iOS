@@ -186,7 +186,11 @@ enum ExtendedHosterExtractor {
 
     private static func firstSource(in texts: [String], patterns: [String], relativeTo base: URL) -> URL? {
         for text in texts {
-            let normalized = text.replacingOccurrences(of: "\\/", with: "/")
+            let normalized = text
+                .replacingOccurrences(of: "\\/", with: "/")
+                .replacingOccurrences(of: "\\u0026", with: "&")
+                .replacingOccurrences(of: "\\x26", with: "&")
+                .replacingOccurrences(of: "&amp;", with: "&")
             for pattern in patterns {
                 for match in AnimeHTML.captures(pattern, in: normalized) {
                     let raw = match.count > 2 && pattern.contains("hls") ? match[2] : match[1]
